@@ -29,7 +29,7 @@ REVIEW_FOLDER_ID = os.getenv(
 # ============================================================
 
 SPREADSHEET_ID = os.getenv(
-    "1MiWkU38vtO8DdILg6kDvXz-xLYcWKj9bcjsOQtZUyNQ",
+    "1CaV_p2wr9G4lHfZBiHWzRbBgzUYqSFFCrwyF5u7rKDE",
     "PEGAR_ID_GOOGLE_SHEET"
 )
 
