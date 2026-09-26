@@ -9,18 +9,18 @@ import os
 # si querés seguir ejecutándolo sin variables de entorno.
 
 INPUT_FOLDER_ID = os.getenv(
-    "1LqovQ-ywyaA3144EJhULaJk_deROpjY4",
-    "PEGAR_ID_CARPETA_01_ENTRADA"
+    "INPUT_FOLDER_ID",
+    "1LqovQ-ywyaA3144EJhULaJk_deROpjY4"
 )
 
 PROCESSED_FOLDER_ID = os.getenv(
-    "10qA0mQMhXSjJ0iXWD8Zc2HifP77SFefY",
-    "PEGAR_ID_CARPETA_02_PROCESADAS"
+    "PROCESSED_FOLDER_ID",
+    "10qA0mQMhXSjJ0iXWD8Zc2HifP77SFefY"
 )
 
 REVIEW_FOLDER_ID = os.getenv(
-    "1fQ2dx5AJBdSQMrXtXkZwR9847C4StKdU",
-    "PEGAR_ID_CARPETA_03_REVISAR"
+    "REVIEW_FOLDER_ID",
+    "1fQ2dx5AJBdSQMrXtXkZwR9847C4StKdU"
 )
 
 
