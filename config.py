@@ -29,13 +29,13 @@ REVIEW_FOLDER_ID = os.getenv(
 # ============================================================
 
 SPREADSHEET_ID = os.getenv(
-    "1CaV_p2wr9G4lHfZBiHWzRbBgzUYqSFFCrwyF5u7rKDE",
-    "PEGAR_ID_GOOGLE_SHEET"
+    "SPREADSHEET_ID",
+    "1CaV_p2wr9G4lHfZBiHWzRbBgzUYqSFFCrwyF5u7rKDE"
 )
 
 WORKSHEET_NAME = os.getenv(
-    "Facturas",
-    "FACTURAS"
+    "WORKSHEET_NAME",
+    "Facturas"
 )
 
 
