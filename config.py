@@ -1,70 +1,90 @@
-"""
-CONFIGURACIÓN GENERAL DE LA AUTOMATIZACIÓN.
-
-IMPORTANTE:
-Buscá los comentarios que dicen "# CAMBIAR:".
-Esas son las partes que tenés que completar para que funcione en tu cuenta.
-"""
+import os
 
 # ============================================================
 # GOOGLE DRIVE
 # ============================================================
 
-# CAMBIAR: pegá solamente el ID de la carpeta "01_ENTRADA".
-# Ejemplo de URL:
-# https://drive.google.com/drive/folders/1AbCdEfGh123456
-# El ID sería: 1AbCdEfGh123456
-INPUT_FOLDER_ID = "1LqovQ-ywyaA3144EJhULaJk_deROpjY4"
+# En Render estos valores se toman de Environment Variables.
+# Localmente podés reemplazar el segundo parámetro por tus IDs actuales
+# si querés seguir ejecutándolo sin variables de entorno.
 
-# CAMBIAR: ID de la carpeta "02_PROCESADAS".
-PROCESSED_FOLDER_ID = "10qA0mQMhXSjJ0iXWD8Zc2HifP77SFefY"
+INPUT_FOLDER_ID = os.getenv(
+    "1LqovQ-ywyaA3144EJhULaJk_deROpjY4",
+    "PEGAR_ID_CARPETA_01_ENTRADA"
+)
 
-# CAMBIAR: ID de la carpeta "03_REVISAR".
-REVIEW_FOLDER_ID = "1fQ2dx5AJBdSQMrXtXkZwR9847C4StKdU"
+PROCESSED_FOLDER_ID = os.getenv(
+    "10qA0mQMhXSjJ0iXWD8Zc2HifP77SFefY",
+    "PEGAR_ID_CARPETA_02_PROCESADAS"
+)
+
+REVIEW_FOLDER_ID = os.getenv(
+    "1fQ2dx5AJBdSQMrXtXkZwR9847C4StKdU",
+    "PEGAR_ID_CARPETA_03_REVISAR"
+)
 
 
 # ============================================================
 # GOOGLE SHEETS
 # ============================================================
 
-# CAMBIAR: pegá el ID de tu Google Sheet "Registro de Facturas".
-# Ejemplo:
-# https://docs.google.com/spreadsheets/d/1ABCxyz123/edit
-# El ID sería: 1ABCxyz123
-SPREADSHEET_ID = "1MiWkU38vtO8DdILg6kDvXz-xLYcWKj9bcjsOQtZUyNQ"
+SPREADSHEET_ID = os.getenv(
+    "1MiWkU38vtO8DdILg6kDvXz-xLYcWKj9bcjsOQtZUyNQ",
+    "PEGAR_ID_GOOGLE_SHEET"
+)
 
-# CAMBIAR solamente si tu pestaña tiene otro nombre.
-WORKSHEET_NAME = "Facturas"
-
-
-# ============================================================
-# CREDENCIALES GOOGLE
-# ============================================================
-
-# CAMBIAR solamente si tu archivo JSON tiene otro nombre o está en otra carpeta.
-# NO subas este archivo a GitHub.
-SERVICE_ACCOUNT_FILE = "credentials/service_account.json"
+WORKSHEET_NAME = os.getenv(
+    "Facturas",
+    "FACTURAS"
+)
 
 
 # ============================================================
-# OCR / TESSERACT
+# GOOGLE SERVICE ACCOUNT
 # ============================================================
 
-# CAMBIAR si Tesseract está instalado en otra ruta.
-# Ruta típica en Windows:
-TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# LOCAL:
+# credentials/service_account.json
+#
+# RENDER:
+# /etc/secrets/service_account.json
 
-# CAMBIAR a "eng" si no instalaste el paquete de idioma español de Tesseract.
-TESSERACT_LANG = "spa"
+SERVICE_ACCOUNT_FILE = os.getenv(
+    "SERVICE_ACCOUNT_FILE",
+    "credentials/service_account.json"
+)
+
+
+# ============================================================
+# TESSERACT
+# ============================================================
+
+# Windows local:
+# C:\Program Files\Tesseract-OCR\tesseract.exe
+#
+# Render/Docker Linux:
+# tesseract
+
+if os.getenv("RENDER"):
+    TESSERACT_CMD = "tesseract"
+else:
+    TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+
+TESSERACT_LANG = os.getenv(
+    "TESSERACT_LANG",
+    "spa"
+)
 
 
 # ============================================================
 # AUTOMATIZACIÓN
 # ============================================================
 
-# Cada cuántos segundos Streamlit vuelve a revisar Google Drive.
-POLL_SECONDS = 30
+POLL_SECONDS = int(
+    os.getenv("POLL_SECONDS", "30")
+)
 
-# Cantidad mínima de caracteres extraídos de un PDF para considerar
-# que el PDF ya contiene texto digital y NO hace falta OCR.
-MIN_TEXT_LENGTH = 100
+MIN_TEXT_LENGTH = int(
+    os.getenv("MIN_TEXT_LENGTH", "100")
+)
