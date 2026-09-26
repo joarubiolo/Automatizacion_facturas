@@ -1,0 +1,3 @@
+Pegá esta fila como primera fila de la pestaña FACTURAS:
+
+fecha_carga	estado	fecha_factura	tipo	punto_venta	numero	proveedor	cuit_proveedor	cliente	cuit_cliente	detalle	neto	iva	total	cae	vencimiento_cae	archivo	drive_id	hash	clave_factura	observaciones
