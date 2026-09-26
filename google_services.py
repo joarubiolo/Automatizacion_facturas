@@ -51,6 +51,13 @@ drive = build("drive", "v3", credentials=credentials)
 gc = gspread.authorize(credentials)
 
 # Abrimos el Sheet por ID para evitar problemas si hay dos archivos con el mismo nombre.
+
+print("===================================")
+print("DIAGNOSTICO GOOGLE")
+print("SPREADSHEET_ID:", repr(SPREADSHEET_ID))
+print("SERVICE ACCOUNT:", credentials.service_account_email)
+print("===================================")
+
 spreadsheet = gc.open_by_key(SPREADSHEET_ID)
 sheet = spreadsheet.worksheet(WORKSHEET_NAME)
 
