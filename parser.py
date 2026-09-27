@@ -1,253 +1,572 @@
 """
-Convierte el texto de una factura en datos estructurados.
+Parser V2 para facturas.
 
-IMPORTANTE:
-Este parser funciona con reglas generales y está preparado para la factura
-de ejemplo utilizada durante el desarrollo.
+La mejora principal es que NO asocia datos solo por "el primer número
+que aparece después de una palabra".
 
-Si tus proveedores usan formatos muy diferentes, probablemente tengas que
-agregar reglas específicas. Buscá los comentarios "# AJUSTAR:".
+Busca etiquetas concretas:
+- Fecha:
+- N°
+- CUIT
+- Sr:
+- Sub-Total
+- IVA
+- Total General
+- Numero de CAE
+- Fecha Vencimiento CAE
+
+Está diseñado para funcionar junto con extractor.py V2,
+que usa PyMuPDF con sort=True.
 """
 
 from __future__ import annotations
 
 import re
+from collections import Counter
 from typing import Dict, List, Optional
 
 
-def solo_digitos(valor: Optional[str]) -> Optional[str]:
+# ============================================================
+# OPCIONAL: PROVEEDORES CONOCIDOS
+# ============================================================
+#
+# El nombre del emisor puede estar dentro de un LOGO y no existir
+# en el texto digital del PDF.
+#
+# La forma más fiable de resolverlo es por CUIT.
+#
+# Podés agregar proveedores aquí:
+#
+PROVEEDORES_POR_CUIT = {
+    # EJEMPLO:
+    # "27329850027": "M.C Servicios",
+}
+
+
+def solo_digitos(
+    valor: Optional[str],
+) -> Optional[str]:
+
     if not valor:
         return None
+
     digitos = re.sub(r"\D", "", valor)
+
     return digitos or None
 
 
-def convertir_importe(valor: Optional[str]) -> Optional[float]:
+def convertir_importe(
+    valor: Optional[str],
+) -> Optional[float]:
     """
-    Convierte importes argentinos:
+    Convierte:
         34.249.050,00 -> 34249050.00
         34249050,00    -> 34249050.00
     """
+
     if not valor:
         return None
 
-    valor = valor.strip().replace("$", "").replace(" ", "")
+    valor = (
+        valor.strip()
+        .replace("$", "")
+        .replace(" ", "")
+    )
 
-    # Formato argentino con coma decimal.
     if "," in valor:
         valor = valor.replace(".", "")
         valor = valor.replace(",", ".")
-    else:
-        # Si no hay coma, quitamos puntos usados como separadores de miles.
-        partes = valor.split(".")
-        if len(partes) > 2:
-            valor = "".join(partes)
 
     try:
         return float(valor)
+
     except ValueError:
         return None
 
 
-def _buscar_primero(patrones: List[str], texto: str, flags=re.IGNORECASE | re.MULTILINE):
-    for patron in patrones:
-        match = re.search(patron, texto, flags)
-        if match:
-            return match.group(1).strip()
-    return None
-
-
-def _buscar_importe_por_etiqueta(texto: str, etiquetas: List[str]) -> Optional[float]:
-    """
-    Busca un importe cerca de etiquetas como "Total General", "IVA", "Sub-Total".
-    """
-    patron_importe = r"([0-9][0-9\.\,]*[\,\.][0-9]{2})"
-
-    for etiqueta in etiquetas:
-        patrones = [
-            rf"{etiqueta}\s*:?\s*\$?\s*{patron_importe}",
-            rf"{etiqueta}\s*:?.{{0,40}}?\$?\s*{patron_importe}",
-        ]
-
-        for patron in patrones:
-            match = re.search(
-                patron,
-                texto,
-                re.IGNORECASE | re.MULTILINE | re.DOTALL,
-            )
-            if match:
-                return convertir_importe(match.group(1))
-
-    return None
-
-
-def _detectar_tipo_factura(texto: str) -> Optional[str]:
-    match = re.search(
-        r"FACTURA\s+([ABCEM])\b",
-        texto,
-        re.IGNORECASE,
-    )
-    return match.group(1).upper() if match else None
-
-
-def _detectar_numero_factura(texto: str):
-    """
-    Intenta obtener punto de venta y número.
-
-    Ejemplo:
-        N° 0003 00000233
-        0003-00000233
-    """
-    patrones = [
-        r"(?:N[°ºo.]?\s*)?(\d{4})\s*[- ]\s*(\d{8})",
-        r"(?:N[°ºo.]?\s*)?(\d{4})\s+(\d{8})",
-    ]
+def _buscar_primero(
+    patrones: List[str],
+    texto: str,
+) -> Optional[str]:
 
     for patron in patrones:
-        match = re.search(patron, texto, re.IGNORECASE)
-        if match:
-            return match.group(1), match.group(2)
 
-    return None, None
-
-
-def _detectar_cuits(texto: str) -> List[str]:
-    """
-    Busca CUIT con o sin guiones.
-
-    NOTA:
-    En muchas facturas el primer CUIT pertenece al proveedor y el segundo
-    al cliente. Esa es la heurística utilizada aquí.
-    """
-    encontrados = re.findall(
-        r"(?<!\d)(\d{2}[- ]?\d{8}[- ]?\d)(?!\d)",
-        texto,
-    )
-
-    resultado = []
-    for cuit in encontrados:
-        cuit_limpio = solo_digitos(cuit)
-        if cuit_limpio and len(cuit_limpio) == 11 and cuit_limpio not in resultado:
-            resultado.append(cuit_limpio)
-
-    return resultado
-
-
-def _detectar_fechas(texto: str) -> List[str]:
-    fechas = re.findall(
-        r"\b\d{2}/\d{2}/\d{4}\b",
-        texto,
-    )
-
-    # Conserva orden y elimina duplicados.
-    resultado = []
-    for fecha in fechas:
-        if fecha not in resultado:
-            resultado.append(fecha)
-
-    return resultado
-
-
-def _detectar_cae(texto: str) -> Optional[str]:
-    patrones = [
-        r"(?:N[uú]mero\s+de\s+CAE|CAE)\s*:?\s*(\d{14})",
-        r"\b(\d{14})\b",
-    ]
-
-    return _buscar_primero(patrones, texto)
-
-
-def _detectar_cliente(texto: str) -> Optional[str]:
-    """
-    AJUSTAR:
-    Esta regla busca texto después de "Sr:".
-
-    Para la factura de ejemplo detecta "KARPA SA".
-    Si tus facturas usan "Cliente:", "Razón Social:", etc.,
-    agregá más patrones aquí.
-    """
-    patrones = [
-        r"^\s*Sr\.?\s*:\s*(.+?)\s*$",
-        r"^\s*Cliente\s*:\s*(.+?)\s*$",
-        r"^\s*Raz[oó]n\s+Social\s*:\s*(.+?)\s*$",
-    ]
-
-    for patron in patrones:
         match = re.search(
             patron,
             texto,
             re.IGNORECASE | re.MULTILINE,
         )
+
         if match:
+            return match.group(1).strip()
+
+    return None
+
+
+# ============================================================
+# TIPO DE FACTURA
+# ============================================================
+
+def _detectar_tipo_factura(
+    texto: str,
+) -> Optional[str]:
+
+    match = re.search(
+        r"\bFACTURA\s+([ABCEM])\b",
+        texto,
+        re.IGNORECASE,
+    )
+
+    if not match:
+        return None
+
+    return match.group(1).upper()
+
+
+# ============================================================
+# PUNTO DE VENTA + NÚMERO
+# ============================================================
+
+def _detectar_numero_factura(
+    texto: str,
+):
+    """
+    Busca expresamente el bloque N°.
+
+    Ejemplos:
+        N° 0003 00000233
+        N° 0003-00000233
+
+    Esto evita interpretar:
+        8000
+    como punto de venta.
+    """
+
+    patrones = [
+        r"N[°ºo.]?\s*(\d{4})\s*[- ]+\s*(\d{8})",
+        r"N[°ºo.]?\s*\n?\s*(\d{4})\s*\n?\s*(\d{8})",
+    ]
+
+    for patron in patrones:
+
+        match = re.search(
+            patron,
+            texto,
+            re.IGNORECASE,
+        )
+
+        if match:
+            return (
+                match.group(1),
+                match.group(2),
+            )
+
+    return None, None
+
+
+# ============================================================
+# FECHAS
+# ============================================================
+
+def _detectar_fecha_factura(
+    texto: str,
+) -> Optional[str]:
+    """
+    Busca "Fecha:" evitando confundirla con
+    "Fecha Vencimiento CAE".
+    """
+
+    patrones = [
+        r"^\s*Fecha\s*:\s*(\d{2}/\d{2}/\d{4})",
+        r"\bFecha\s*:\s*(\d{2}/\d{2}/\d{4})",
+    ]
+
+    return _buscar_primero(
+        patrones,
+        texto,
+    )
+
+
+def _detectar_vencimiento_cae(
+    texto: str,
+) -> Optional[str]:
+
+    return _buscar_primero(
+        [
+            r"Fecha\s+Vencimiento\s+CAE\s*:\s*(\d{2}/\d{2}/\d{4})",
+        ],
+        texto,
+    )
+
+
+# ============================================================
+# CUIT
+# ============================================================
+
+def _detectar_cuits(
+    texto: str,
+) -> List[str]:
+
+    encontrados = re.findall(
+        r"(?<!\d)(\d{11})(?!\d)",
+        texto,
+    )
+
+    resultado = []
+
+    for cuit in encontrados:
+
+        if cuit not in resultado:
+            resultado.append(cuit)
+
+    return resultado
+
+
+def _detectar_cuit_cliente(
+    texto: str,
+) -> Optional[str]:
+    """
+    Busca el CUIT que aparece junto al bloque del cliente.
+
+    Ejemplo:
+        Sr: KARPA SA   CUIT: 30561286686
+    """
+
+    patron = (
+        r"\bSr\.?\s*:"
+        r".{0,200}?"
+        r"\bCUIT\s*:\s*(\d{11})"
+    )
+
+    match = re.search(
+        patron,
+        texto,
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def _detectar_cuit_proveedor(
+    texto: str,
+    cuit_cliente: Optional[str],
+) -> Optional[str]:
+    """
+    Para el emisor prioriza un CUIT que:
+    - sea distinto al del cliente;
+    - aparezca varias veces;
+    - esté cerca de Ingresos Brutos / Inicio Actividades.
+
+    Es más seguro que asumir "primer CUIT = proveedor".
+    """
+
+    candidatos = re.findall(
+        r"(?<!\d)(\d{11})(?!\d)",
+        texto,
+    )
+
+    candidatos = [
+        cuit
+        for cuit in candidatos
+        if cuit != cuit_cliente
+    ]
+
+    if not candidatos:
+        return None
+
+    # El CUIT del emisor suele repetirse.
+    conteo = Counter(candidatos)
+
+    return conteo.most_common(1)[0][0]
+
+
+# ============================================================
+# CLIENTE
+# ============================================================
+
+def _detectar_cliente(
+    texto: str,
+) -> Optional[str]:
+    """
+    Captura solamente el nombre después de "Sr:".
+
+    IMPORTANTE:
+    se detiene antes de "CUIT:" para no obtener:
+        KARPA SA CUIT: 305...
+    """
+
+    patrones = [
+        (
+            r"^\s*Sr\.?\s*:\s*"
+            r"(.+?)"
+            r"(?=\s{2,}CUIT\s*:|\s+CUIT\s*:|$)"
+        ),
+        (
+            r"^\s*Cliente\s*:\s*"
+            r"(.+?)"
+            r"(?=\s{2,}CUIT\s*:|\s+CUIT\s*:|$)"
+        ),
+        (
+            r"^\s*Raz[oó]n\s+Social\s*:\s*"
+            r"(.+?)"
+            r"(?=\s{2,}CUIT\s*:|\s+CUIT\s*:|$)"
+        ),
+    ]
+
+    for patron in patrones:
+
+        match = re.search(
+            patron,
+            texto,
+            re.IGNORECASE | re.MULTILINE,
+        )
+
+        if match:
+
             valor = match.group(1).strip()
+
             if valor:
                 return valor
 
     return None
 
 
-def _detectar_detalle(texto: str) -> Optional[str]:
-    """
-    AJUSTAR:
-    Busca una línea que parezca un ítem facturado y que termine con
-    cantidad / precio unitario / precio total.
+# ============================================================
+# IMPORTES
+# ============================================================
 
-    Está pensada para facturas similares a la factura de ejemplo.
+PATRON_IMPORTE = (
+    r"([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}"
+    r"|[0-9]+,[0-9]{2})"
+)
+
+
+def _importe_misma_linea(
+    texto: str,
+    etiqueta: str,
+) -> Optional[float]:
     """
+    Busca un importe en la MISMA línea que la etiqueta.
+
+    Esto evita que "IVA" tome accidentalmente el subtotal.
+    """
+
+    patron = (
+        rf"{etiqueta}"
+        rf"[^\r\n0-9]*"
+        rf"{PATRON_IMPORTE}"
+    )
+
+    match = re.search(
+        patron,
+        texto,
+        re.IGNORECASE,
+    )
+
+    if not match:
+        return None
+
+    return convertir_importe(
+        match.group(1)
+    )
+
+
+def _detectar_neto(
+    texto: str,
+) -> Optional[float]:
+
+    for etiqueta in [
+        r"Sub[- ]?Total\s*:",
+        r"Neto(?:\s+Gravado)?\s*:",
+    ]:
+
+        valor = _importe_misma_linea(
+            texto,
+            etiqueta,
+        )
+
+        if valor is not None:
+            return valor
+
+    return None
+
+
+def _detectar_total(
+    texto: str,
+) -> Optional[float]:
+
+    for etiqueta in [
+        r"Total\s+General\s*:",
+        r"\bTotal\s*:",
+    ]:
+
+        valor = _importe_misma_linea(
+            texto,
+            etiqueta,
+        )
+
+        if valor is not None:
+            return valor
+
+    return None
+
+
+def _detectar_iva(
+    texto: str,
+    neto: Optional[float],
+    total: Optional[float],
+) -> Optional[float]:
+    """
+    1) Busca "IVA: importe" en la misma línea.
+    2) Si no es posible pero tenemos Neto y Total,
+       calcula Total - Neto.
+
+    Para facturas simples como la muestra:
+        34.249.050 - 28.305.000 = 5.944.050
+    """
+
+    matches = re.findall(
+        rf"\bIVA\s*:\s*{PATRON_IMPORTE}",
+        texto,
+        re.IGNORECASE,
+    )
+
+    if matches:
+
+        # Usamos la última coincidencia porque en la cabecera
+        # suele existir "IVA: IVA Resp. Inscripto", sin importe.
+        valor = convertir_importe(
+            matches[-1]
+        )
+
+        if valor is not None:
+            return valor
+
+    if neto is not None and total is not None:
+
+        diferencia = round(
+            total - neto,
+            2,
+        )
+
+        if diferencia >= 0:
+            return diferencia
+
+    return None
+
+
+# ============================================================
+# CAE
+# ============================================================
+
+def _detectar_cae(
+    texto: str,
+) -> Optional[str]:
+
+    return _buscar_primero(
+        [
+            r"Numero\s+de\s+CAE\s*:\s*(\d{14})",
+            r"N[uú]mero\s+de\s+CAE\s*:\s*(\d{14})",
+        ],
+        texto,
+    )
+
+
+# ============================================================
+# DETALLE
+# ============================================================
+
+def _detectar_detalle(
+    texto: str,
+) -> Optional[str]:
+
     patron = re.compile(
-        r"^(.+?)\s+"
+        r"^\s*(.+?)\s+"
         r"\d{1,3}(?:[.,]\d{3})?\s+"
         r"\d[\d\.,]*\s+"
-        r"\d[\d\.,]*$",
+        r"\d[\d\.,]*\s*$",
         re.MULTILINE,
     )
 
     for match in patron.finditer(texto):
+
         detalle = match.group(1).strip()
 
-        # Evita tomar encabezados de tabla.
-        if "detalle" not in detalle.lower() and len(detalle) > 5:
+        if (
+            "detalle" not in detalle.lower()
+            and len(detalle) > 5
+        ):
             return detalle
 
     return None
 
 
-def parsear_factura(texto: str) -> Dict:
-    """
-    Devuelve un diccionario estándar con los campos principales.
-    """
-    tipo = _detectar_tipo_factura(texto)
-    punto_venta, numero = _detectar_numero_factura(texto)
+# ============================================================
+# PARSER PRINCIPAL
+# ============================================================
 
-    fechas = _detectar_fechas(texto)
-    cuits = _detectar_cuits(texto)
+def parsear_factura(
+    texto: str,
+) -> Dict:
 
-    # Heurística general:
-    # 1er CUIT = proveedor/emisor
-    # 2do CUIT = cliente
-    cuit_proveedor = cuits[0] if len(cuits) >= 1 else None
-    cuit_cliente = cuits[1] if len(cuits) >= 2 else None
-
-    fecha_factura = fechas[0] if fechas else None
-
-    # AJUSTAR:
-    # En la factura de ejemplo la segunda fecha suele corresponder
-    # al vencimiento del CAE.
-    vencimiento_cae = fechas[1] if len(fechas) >= 2 else None
-
-    neto = _buscar_importe_por_etiqueta(
-        texto,
-        [r"Sub[- ]?Total", r"Neto(?:\s+Gravado)?"],
+    tipo = _detectar_tipo_factura(
+        texto
     )
 
-    iva = _buscar_importe_por_etiqueta(
-        texto,
-        [r"\bIVA\b"],
+    punto_venta, numero = (
+        _detectar_numero_factura(
+            texto
+        )
     )
 
-    total = _buscar_importe_por_etiqueta(
+    fecha_factura = (
+        _detectar_fecha_factura(
+            texto
+        )
+    )
+
+    vencimiento_cae = (
+        _detectar_vencimiento_cae(
+            texto
+        )
+    )
+
+    cuit_cliente = (
+        _detectar_cuit_cliente(
+            texto
+        )
+    )
+
+    cuit_proveedor = (
+        _detectar_cuit_proveedor(
+            texto,
+            cuit_cliente,
+        )
+    )
+
+    neto = _detectar_neto(
+        texto
+    )
+
+    total = _detectar_total(
+        texto
+    )
+
+    iva = _detectar_iva(
         texto,
-        [r"Total\s+General", r"\bTotal\b"],
+        neto,
+        total,
+    )
+
+    proveedor = (
+        PROVEEDORES_POR_CUIT.get(
+            cuit_proveedor
+        )
+        if cuit_proveedor
+        else None
     )
 
     factura = {
@@ -256,33 +575,38 @@ def parsear_factura(texto: str) -> Dict:
         "punto_venta": punto_venta,
         "numero": numero,
 
-        # AJUSTAR:
-        # Detectar automáticamente el nombre del proveedor es muy dependiente
-        # del diseño de cada factura. Lo dejamos vacío si no hay una regla segura.
-        "proveedor": None,
+        "proveedor": proveedor,
         "cuit_proveedor": cuit_proveedor,
 
-        "cliente": _detectar_cliente(texto),
+        "cliente": _detectar_cliente(
+            texto
+        ),
         "cuit_cliente": cuit_cliente,
 
-        "detalle": _detectar_detalle(texto),
+        "detalle": _detectar_detalle(
+            texto
+        ),
 
         "neto": neto,
         "iva": iva,
         "total": total,
 
-        "cae": _detectar_cae(texto),
-        "vencimiento_cae": vencimiento_cae,
+        "cae": _detectar_cae(
+            texto
+        ),
+
+        "vencimiento_cae": (
+            vencimiento_cae
+        ),
     }
 
     return factura
 
 
-def crear_clave_factura(factura: Dict) -> Optional[str]:
-    """
-    Genera una clave para detectar duplicados:
-        CUIT-TIPO-PUNTO_VENTA-NUMERO
-    """
+def crear_clave_factura(
+    factura: Dict,
+) -> Optional[str]:
+
     campos = [
         factura.get("cuit_proveedor"),
         factura.get("tipo"),
@@ -293,4 +617,7 @@ def crear_clave_factura(factura: Dict) -> Optional[str]:
     if not all(campos):
         return None
 
-    return "-".join(str(campo).strip() for campo in campos)
+    return "-".join(
+        str(campo).strip()
+        for campo in campos
+    )
