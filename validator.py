@@ -4,7 +4,7 @@ VALIDATOR V3
 Cambio principal:
 la ecuación de validación pasa a ser:
 
-    Neto + IVA + Otros Tributos = Total
+    Neto + IVA + Importe Otros Tributos = Total
 
 Esto evita confundir percepciones/impuestos adicionales con IVA.
 """
@@ -64,8 +64,8 @@ def validar_factura(
     iva = factura.get("iva")
     total = factura.get("total")
 
-    otros_tributos = float(
-        factura.get("otros_tributos") or 0
+    importe_otros_tributos = float(
+        factura.get("importe_otros_tributos") or 0
     )
 
     if (
@@ -76,7 +76,7 @@ def validar_factura(
         esperado = (
             float(neto)
             + float(iva)
-            + otros_tributos
+            + importe_otros_tributos
         )
 
         diferencia = abs(
@@ -87,7 +87,7 @@ def validar_factura(
         if diferencia > 1:
             errores.append(
                 "El total no coincide con "
-                "Neto + IVA + Otros Tributos "
+                "Neto + IVA + Importe Otros Tributos "
                 f"(diferencia: {diferencia:.2f})"
             )
 
