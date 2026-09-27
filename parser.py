@@ -9,7 +9,7 @@ Mejoras:
 - Detecta Razón Social del proveedor y cliente.
 - Detecta CAE y vencimiento con distintas etiquetas.
 - Suma correctamente IVA por alícuotas (21%, 10.5%, etc.).
-- Detecta "Otros Tributos" para validar el total sin confundirlo con IVA.
+- Detecta "Importe Otros Tributos" como campo independiente.
 - Extrae varios productos/servicios en el campo detalle.
 - Si el PDF trae ORIGINAL + DUPLICADO + TRIPLICADO, analiza solamente ORIGINAL.
 """
@@ -345,7 +345,7 @@ def _detectar_neto(texto: str) -> Optional[float]:
     )
 
 
-def _detectar_otros_tributos(texto: str) -> float:
+def _detectar_importe_otros_tributos(texto: str) -> float:
     """
     Devuelve 0 si no existen otros tributos.
 
@@ -368,7 +368,7 @@ def _detectar_iva(
     texto: str,
     neto: Optional[float],
     total: Optional[float],
-    otros_tributos: float,
+    importe_otros_tributos: float,
 ) -> Optional[float]:
     """
     Prioridad 1:
@@ -422,7 +422,7 @@ def _detectar_iva(
     # Último recurso.
     if neto is not None and total is not None:
         calculado = round(
-            total - neto - otros_tributos,
+            total - neto - importe_otros_tributos,
             2,
         )
 
@@ -621,13 +621,13 @@ def parsear_factura(texto: str) -> Dict:
 
     neto = _detectar_neto(texto)
     total = _detectar_total(texto)
-    otros_tributos = _detectar_otros_tributos(texto)
+    importe_otros_tributos = _detectar_importe_otros_tributos(texto)
 
     iva = _detectar_iva(
         texto,
         neto,
         total,
-        otros_tributos,
+        importe_otros_tributos,
     )
 
     return {
@@ -651,7 +651,7 @@ def parsear_factura(texto: str) -> Dict:
         # Este campo se usa internamente para validar la ecuación.
         # google_services.py puede ignorarlo: no hace falta agregar
         # una columna al Sheet si no querés.
-        "otros_tributos": otros_tributos,
+        "importe_otros_tributos": importe_otros_tributos,
 
         "cae": _detectar_cae(texto),
         "vencimiento_cae": _detectar_vencimiento_cae(texto),
