@@ -65,10 +65,10 @@ SERVICE_ACCOUNT_FILE = os.getenv(
 # Render/Docker Linux:
 # tesseract
 
-if os.getenv("RENDER"):
-    TESSERACT_CMD = "tesseract"
-else:
-    TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+TESSERACT_CMD = os.getenv(
+    "TESSERACT_CMD",
+    "/usr/bin/tesseract"
+)
 
 
 TESSERACT_LANG = os.getenv(
