@@ -16,6 +16,11 @@ MIN_TEXT_LENGTH = int(os.getenv("MIN_TEXT_LENGTH", "100"))
 
 PADDLE_LANG = os.getenv("PADDLE_LANG", "es")
 PADDLE_DEVICE = os.getenv("PADDLE_DEVICE", "cpu")
+PADDLE_ENABLE_MKLDNN = os.getenv(
+    "PADDLE_ENABLE_MKLDNN",
+    "false" if platform.machine().lower() in {"aarch64", "arm64"} else "true",
+).lower() == "true"
+PADDLE_CPU_THREADS = int(os.getenv("PADDLE_CPU_THREADS", "1"))
 PADDLE_MIN_SCORE = float(os.getenv("PADDLE_MIN_SCORE", "0.35"))
 
 PADDLE_DET_MODEL = os.getenv(

@@ -22,10 +22,11 @@ WORKDIR /app
 
 COPY requirements.txt .
 
+ARG PADDLE_INDEX_URL=https://www.paddlepaddle.org.cn/packages/stable/cpu/
 RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
     python -m pip install --no-cache-dir \
         paddlepaddle==3.2.0 \
-        -i https://www.paddlepaddle.org.cn/packages/stable/cpu/ && \
+        -i "${PADDLE_INDEX_URL}" && \
     python -m pip install --no-cache-dir -r requirements.txt
 
 COPY preload_paddle_models.py .

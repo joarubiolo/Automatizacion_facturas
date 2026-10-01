@@ -18,13 +18,10 @@ class AppPipelineTests(unittest.TestCase):
     def setUp(self):
         # Se sustituyen servicios externos para no escribir facturas reales.
         self.google = MagicMock()
-        streamlit = MagicMock()
-        streamlit.fragment.return_value = lambda function: MagicMock()
         with patch.dict(sys.modules, {
             "google_services": self.google,
-            "streamlit": streamlit,
         }):
-            app = runpy.run_path(str(Path(__file__).parents[1] / "app.py"))
+            app = runpy.run_path(str(Path(__file__).parents[1] / "pipeline.py"))
         self.process = app["procesar_archivo"]
         self.cycle = app["ejecutar_ciclo"]
         self.document = {

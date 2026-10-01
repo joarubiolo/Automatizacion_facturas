@@ -1,0 +1,37 @@
+services:
+  worker:
+    build:
+      context: .
+      args:
+        PADDLE_INDEX_URL: https://pypi.org/simple
+    image: facturas-oracle:local
+    platform: linux/arm64
+    command: ["python", "worker.py"]
+    env_file: .env
+    environment:
+      SERVICE_ACCOUNT_FILE: /run/secrets/service_account
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+    secrets:
+      - service_account
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 5m
+    mem_limit: 8g
+    cpus: 2
+    ulimits:
+      core: 0
+    # La imagen conserva el healthcheck web para Render; aquí no hay servidor web.
+    healthcheck:
+      disable: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+secrets:
+  service_account:
+    file: ./credentials/service_account.json

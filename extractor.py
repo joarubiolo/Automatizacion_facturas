@@ -97,6 +97,8 @@ def _get_paddle():
         "use_doc_unwarping": False,
         "use_textline_orientation": False,
         "device": getattr(config, "PADDLE_DEVICE", "cpu"),
+        "enable_mkldnn": getattr(config, "PADDLE_ENABLE_MKLDNN", True),
+        "cpu_threads": getattr(config, "PADDLE_CPU_THREADS", 1),
         "text_detection_model_name": getattr(
             config,
             "PADDLE_DET_MODEL",

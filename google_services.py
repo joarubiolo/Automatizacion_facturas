@@ -42,12 +42,6 @@ credentials = _crear_credenciales()
 drive = build("drive", "v3", credentials=credentials)
 gc = gspread.authorize(credentials)
 
-print("===================================")
-print("DIAGNOSTICO GOOGLE")
-print("SPREADSHEET_ID:", repr(SPREADSHEET_ID))
-print("SERVICE ACCOUNT:", credentials.service_account_email)
-print("===================================")
-
 spreadsheet = gc.open_by_key(SPREADSHEET_ID)
 sheet = spreadsheet.worksheet(WORKSHEET_NAME)
 

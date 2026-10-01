@@ -12,21 +12,25 @@ las registra en Google Sheets y mueve los archivos a PROCESADAS o REVISAR.
    CUIT y la suma `neto + iva + importe_otros_tributos = total`.
 5. `OK` y `OK_INFERIDO` van a PROCESADAS; `REVISAR` va a revisión.
 
-**Funcionamiento actual:** la revisión periódica usa un fragmento de Streamlit
-asociado a una sesión abierta. No es un worker independiente que garantice
-procesamiento permanente con el navegador cerrado. Usar una única sesión de
-procesamiento para evitar ejecuciones simultáneas.
+**Oracle Cloud:** el modo `worker.py` procesa periódicamente sin navegador abierto.
+La instalación está en [ORACLE_DEPLOY.md](ORACLE_DEPLOY.md). `compose.oracle.yaml`
+configura un único proceso ARM64, reinicio automático y credenciales montadas.
+
+**Streamlit:** `app.py` conserva el modo interactivo, que necesita una sesión
+abierta. Usar un único modo de procesamiento por carpeta para evitar ejecuciones
+simultáneas; detener Render antes de activar el worker de Oracle.
 
 ## Archivos del proyecto
 
 | Archivos | Función |
 | --- | --- |
-| `app.py`, `config.py` | Aplicación y variables de entorno |
+| `app.py`, `config.py`, `pipeline.py`, `worker.py` | Interfaz, configuración y procesamiento compartido/continuo |
 | `extractor.py`, `inference_engine.py`, `parser.py`, `validator.py` | Extracción, inferencia y validación |
 | `google_services.py` | Google Drive y Sheets |
 | `Dockerfile`, `.dockerignore`, `requirements.txt`, `preload_paddle_models.py` | Imagen y precarga de modelos |
 | `render.yaml`, `RENDER_ENV.txt`, `INSTRUCCIONES_RENDER.txt` | Configuración de Render |
-| `test_conexion.py`, `test_factura_local.py`, `tests/` | Diagnóstico y regresiones |
+| `compose.oracle.yaml`, `.env.example`, `deploy/`, `ORACLE_DEPLOY.md` | Instalación en Oracle ARM64 |
+| `test_conexion.py`, `test_factura_local.py`, `ocr_smoke_test.py`, `tests/` | Diagnóstico y regresiones |
 
 No se publican credenciales, facturas reales, resultados JSON, cachés, respaldos
 del parser/validador ni el PDF de conversación. Esos archivos permanecen locales.
