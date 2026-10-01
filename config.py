@@ -1,90 +1,52 @@
 import os
+import platform
 
-# ============================================================
-# GOOGLE DRIVE
-# ============================================================
-
-# En Render estos valores se toman de Environment Variables.
-# Localmente podés reemplazar el segundo parámetro por tus IDs actuales
-# si querés seguir ejecutándolo sin variables de entorno.
-
-INPUT_FOLDER_ID = os.getenv(
-    "1LqovQ-ywyaA3144EJhULaJk_deROpjY4",
-    "PEGAR_ID_CARPETA_01_ENTRADA"
-)
-
-PROCESSED_FOLDER_ID = os.getenv(
-    "10qA0mQMhXSjJ0iXWD8Zc2HifP77SFefY",
-    "PEGAR_ID_CARPETA_02_PROCESADAS"
-)
-
-REVIEW_FOLDER_ID = os.getenv(
-    "1fQ2dx5AJBdSQMrXtXkZwR9847C4StKdU",
-    "PEGAR_ID_CARPETA_03_REVISAR"
-)
-
-
-# ============================================================
-# GOOGLE SHEETS
-# ============================================================
-
-SPREADSHEET_ID = os.getenv(
-    "1MiWkU38vtO8DdILg6kDvXz-xLYcWKj9bcjsOQtZUyNQ",
-    "PEGAR_ID_GOOGLE_SHEET"
-)
-
-WORKSHEET_NAME = os.getenv(
-    "Facturas",
-    "FACTURAS"
-)
-
-
-# ============================================================
-# GOOGLE SERVICE ACCOUNT
-# ============================================================
-
-# LOCAL:
-# credentials/service_account.json
-#
-# RENDER:
-# /etc/secrets/service_account.json
-
+INPUT_FOLDER_ID = os.getenv("INPUT_FOLDER_ID")
+PROCESSED_FOLDER_ID = os.getenv("PROCESSED_FOLDER_ID")
+REVIEW_FOLDER_ID = os.getenv("REVIEW_FOLDER_ID")
+SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
+WORKSHEET_NAME = os.getenv("WORKSHEET_NAME", "FACTURAS")
 SERVICE_ACCOUNT_FILE = os.getenv(
     "SERVICE_ACCOUNT_FILE",
-    "credentials/service_account.json"
+    "credentials/service_account.json",
 )
 
+POLL_SECONDS = int(os.getenv("POLL_SECONDS", "30"))
+MIN_TEXT_LENGTH = int(os.getenv("MIN_TEXT_LENGTH", "100"))
 
-# ============================================================
-# TESSERACT
-# ============================================================
+PADDLE_LANG = os.getenv("PADDLE_LANG", "es")
+PADDLE_DEVICE = os.getenv("PADDLE_DEVICE", "cpu")
+PADDLE_MIN_SCORE = float(os.getenv("PADDLE_MIN_SCORE", "0.35"))
 
-# Windows local:
-# C:\Program Files\Tesseract-OCR\tesseract.exe
-#
-# Render/Docker Linux:
-# tesseract
+PADDLE_DET_MODEL = os.getenv(
+    "PADDLE_DET_MODEL",
+    "PP-OCRv5_mobile_det",
+)
+PADDLE_REC_MODEL = os.getenv(
+    "PADDLE_REC_MODEL",
+    "latin_PP-OCRv5_mobile_rec",
+)
+PADDLE_REC_BATCH_SIZE = int(
+    os.getenv("PADDLE_REC_BATCH_SIZE", "1")
+)
+PADDLE_DET_LIMIT_SIDE_LEN = int(
+    os.getenv("PADDLE_DET_LIMIT_SIDE_LEN", "1600")
+)
 
-if os.getenv("RENDER"):
-    TESSERACT_CMD = "tesseract"
+OCR_SCALE = float(os.getenv("OCR_SCALE", "2.0"))
+
+if platform.system() == "Windows":
+    TESSERACT_CMD = os.getenv(
+        "TESSERACT_CMD",
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    )
 else:
-    TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    TESSERACT_CMD = os.getenv(
+        "TESSERACT_CMD",
+        "/usr/bin/tesseract",
+    )
 
-
-TESSERACT_LANG = os.getenv(
-    "TESSERACT_LANG",
-    "spa"
-)
-
-
-# ============================================================
-# AUTOMATIZACIÓN
-# ============================================================
-
-POLL_SECONDS = int(
-    os.getenv("POLL_SECONDS", "30")
-)
-
-MIN_TEXT_LENGTH = int(
-    os.getenv("MIN_TEXT_LENGTH", "100")
+TESSERACT_LANG = os.getenv("TESSERACT_LANG", "spa")
+USE_TESSERACT_FALLBACK = (
+    os.getenv("USE_TESSERACT_FALLBACK", "true").lower() == "true"
 )

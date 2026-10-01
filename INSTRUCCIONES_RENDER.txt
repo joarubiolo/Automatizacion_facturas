@@ -1,0 +1,154 @@
+DEPLOY EN RENDER - V11
+======================
+
+RECOMENDACION DE RAM
+--------------------
+PaddleOCR consume bastante más memoria que Tesseract.
+
+Esta versión usa:
+- PP-OCRv5_mobile_det
+- latin_PP-OCRv5_mobile_rec
+- batch size 1
+- OCR_SCALE=2.0
+- límite de detección 1600 px
+
+Recomendado:
+    Render Compute Plan 2c-4g (4 GB RAM)
+
+No recomiendo Free (512 MB) para PaddleOCR.
+1c-2g puede quedar demasiado justo.
+
+1) REEMPLAZAR/AGREGAR ARCHIVOS
+------------------------------
+Reemplazar:
+- Dockerfile
+- .dockerignore
+- config.py
+- extractor.py
+- inference_engine.py
+- parser.py
+- validator.py
+- requirements.txt
+
+Agregar:
+- preload_paddle_models.py
+
+Mantener:
+- app.py
+- google_services.py
+
+En app.py debe usarse:
+    from extractor import extraer_documento
+
+    documento = extraer_documento(
+        archivo,
+        mime_type,
+        nombre_archivo
+    )
+
+    factura = parsear_factura(documento)
+
+Y:
+    if estado in ("OK", "OK_INFERIDO"):
+        mover_a_procesadas(...)
+    else:
+        mover_a_revisar(...)
+
+2) PROBAR LOCALMENTE
+--------------------
+docker build --no-cache -t facturas-render .
+
+En el build debería aparecer:
+    Modelos PaddleOCR descargados y listos.
+
+Luego:
+docker run --rm -v "${PWD}:/app" facturas-render python test_factura_local.py "facturas_prueba/factura ejemplo 4.pdf"
+
+3) GITHUB
+---------
+git add .
+git commit -m "Prepara PaddleOCR para Render"
+git push
+
+4) CREAR WEB SERVICE DOCKER EN RENDER
+-------------------------------------
+Tu servicio anterior fue creado como runtime Python nativo.
+La opción más segura es crear un NUEVO Web Service desde el mismo repo.
+
+Render:
+New -> Web Service -> Git Provider
+Repo: joarubiolo/Automatizacion_facturas
+Branch: main
+Language: Docker
+Dockerfile Path: ./Dockerfile
+Compute Plan: 2c-4g
+
+No configurar Build Command ni Start Command.
+Docker usa el Dockerfile y su CMD.
+
+5) VARIABLES DE ENTORNO
+-----------------------
+INPUT_FOLDER_ID=<01_ENTRADA>
+PROCESSED_FOLDER_ID=<02_PROCESADAS>
+REVIEW_FOLDER_ID=<03_REVISAR>
+SPREADSHEET_ID=<Registro Facturas>
+WORKSHEET_NAME=FACTURAS
+
+SERVICE_ACCOUNT_FILE=/etc/secrets/service_account.json
+
+TESSERACT_CMD=/usr/bin/tesseract
+TESSERACT_LANG=spa
+USE_TESSERACT_FALLBACK=true
+
+PADDLE_LANG=es
+PADDLE_DEVICE=cpu
+PADDLE_DET_MODEL=PP-OCRv5_mobile_det
+PADDLE_REC_MODEL=latin_PP-OCRv5_mobile_rec
+PADDLE_REC_BATCH_SIZE=1
+PADDLE_DET_LIMIT_SIDE_LEN=1600
+OCR_SCALE=2.0
+
+POLL_SECONDS=30
+MIN_TEXT_LENGTH=100
+
+6) SECRET FILE
+--------------
+Render -> Environment -> Secret Files
+Nombre:
+    service_account.json
+
+Pegar el JSON completo.
+
+Ruta usada:
+    /etc/secrets/service_account.json
+
+7) HEALTH CHECK
+---------------
+Settings -> Health Checks:
+    /_stcore/health
+
+8) PRIMER BUILD
+---------------
+Va a tardar más porque instala PaddlePaddle/PaddleOCR y descarga los modelos
+durante el build. Eso evita que la primera factura tenga que descargarlos.
+
+9) SI APARECE OUT OF MEMORY
+---------------------------
+Síntomas:
+- exited with status 137
+- killed
+- out of memory
+
+Primero bajar:
+    OCR_SCALE=1.7
+    PADDLE_DET_LIMIT_SIDE_LEN=1280
+
+Si sigue ocurriendo, aumentar RAM.
+
+10) render.yaml
+---------------
+Incluido como opción Blueprint.
+ATENCION:
+    plan: 2c-4g
+es un plan pago.
+Revisarlo antes de crear el servicio con Blueprint.

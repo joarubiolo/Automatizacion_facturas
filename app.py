@@ -30,7 +30,7 @@ from datetime import datetime
 import streamlit as st
 
 from config import POLL_SECONDS
-from extractor import extraer_texto
+from extractor import extraer_documento
 from google_services import (
     descargar_archivo,
     factura_ya_registrada,
@@ -73,13 +73,14 @@ def procesar_archivo(info_archivo):
     hash_archivo = calcular_hash(contenido)
 
     # Primero extraemos el texto para poder construir la clave fiscal.
-    texto, metodo = extraer_texto(
+    documento = extraer_documento(
         archivo=archivo,
         mime_type=mime_type,
         nombre_archivo=nombre,
     )
 
-    factura = parsear_factura(texto)
+    metodo = documento["metodo"]
+    factura = parsear_factura(documento)
     clave_factura = crear_clave_factura(factura)
 
     # Evitamos cargar la misma factura dos veces.
@@ -117,7 +118,7 @@ def procesar_archivo(info_archivo):
     # Si faltan datos, aparecerá como REVISAR.
     guardar_factura(factura)
 
-    if estado == "OK":
+    if estado in ("OK", "OK_INFERIDO"):
         mover_a_procesadas(file_id)
     else:
         mover_a_revisar(file_id)

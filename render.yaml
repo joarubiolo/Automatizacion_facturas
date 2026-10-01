@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: automatizacion-facturas-paddle
+    runtime: docker
+    plan: 2c-4g
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /_stcore/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: INPUT_FOLDER_ID
+        sync: false
+      - key: PROCESSED_FOLDER_ID
+        sync: false
+      - key: REVIEW_FOLDER_ID
+        sync: false
+      - key: SPREADSHEET_ID
+        sync: false
+      - key: WORKSHEET_NAME
+        value: FACTURAS
+      - key: SERVICE_ACCOUNT_FILE
+        value: /etc/secrets/service_account.json
+      - key: TESSERACT_CMD
+        value: /usr/bin/tesseract
+      - key: TESSERACT_LANG
+        value: spa
+      - key: USE_TESSERACT_FALLBACK
+        value: "true"
+      - key: PADDLE_LANG
+        value: es
+      - key: PADDLE_DEVICE
+        value: cpu
+      - key: PADDLE_DET_MODEL
+        value: PP-OCRv5_mobile_det
+      - key: PADDLE_REC_MODEL
+        value: latin_PP-OCRv5_mobile_rec
+      - key: PADDLE_REC_BATCH_SIZE
+        value: "1"
+      - key: PADDLE_DET_LIMIT_SIDE_LEN
+        value: "1600"
+      - key: OCR_SCALE
+        value: "2.0"
+      - key: POLL_SECONDS
+        value: "30"
+      - key: MIN_TEXT_LENGTH
+        value: "100"
