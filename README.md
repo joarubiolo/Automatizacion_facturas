@@ -92,3 +92,14 @@ python -m unittest discover -s tests -v
 Las pruebas usan datos sintéticos y sustituyen los servicios de Google. Para una
 factura privada, ejecutar `test_factura_local.py` con su ruta. Para comprobar las
 credenciales, ejecutar `test_conexion.py` con las variables de entorno configuradas.
+
+### Resultado de la revisión del 1 de octubre de 2026
+
+- Imagen Docker construida correctamente, con ambos modelos precargados.
+- Ocho pruebas aprobadas en Python local y dentro de Docker; `pip check` correcto.
+- La factura escaneada disponible se procesó con PaddleOCR, sin red, y terminó
+  en `REVISAR`. No detectó el tipo y extrajo incorrectamente algunos campos,
+  incluidos número e importes. Esa muestra todavía necesita mejorar el OCR y
+  las reglas de interpretación antes de automatizar su registro sin revisión.
+- Las pruebas no escribieron en Google Drive ni en Sheets. La conexión real y
+  el despliegue en Render requieren la configuración de cada entorno.
