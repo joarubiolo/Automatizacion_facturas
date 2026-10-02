@@ -167,7 +167,7 @@ def create_app(auth=None, directory=None, secure=True):
             health = "warning"
         state.update(health=health, stale=stale, heartbeat_age=age,
                      history_synced_at=snapshots.read("invoices.json").get("synced_at"))
-        state["events"] = state.get("events", [])[-80:][::-1]
+        state.pop("events", None)
         return jsonify(state)
 
     @app.get("/api/invoices")

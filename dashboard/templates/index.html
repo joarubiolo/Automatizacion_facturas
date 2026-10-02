@@ -4,7 +4,7 @@
 <body>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="Facturas, inicio"><span class="brand-mark">F</span><span>Facturas<span class="brand-sub">CENTRO DE CONTROL</span></span></a>
-    <nav aria-label="Secciones"><a href="#overview" class="nav-active"><span aria-hidden="true">◫</span> Resumen</a><a href="#invoices"><span aria-hidden="true">≡</span> Facturas</a><a href="#activity"><span aria-hidden="true">↗</span> Actividad</a></nav>
+    <nav aria-label="Secciones"><a href="#overview" class="nav-active"><span aria-hidden="true">◫</span> Resumen</a><a href="#invoices"><span aria-hidden="true">≡</span> Facturas</a></nav>
     <div class="sidebar-bottom"><span class="tiny-label">ENTORNO</span><strong>Oracle Cloud</strong><span class="muted">Automatización activa</span>
       <form action="/logout" method="post"><input name="csrf" type="hidden" value="{{ csrf }}"><button class="logout" type="submit">Cerrar sesión <span aria-hidden="true">↗</span></button></form>
     </div>
@@ -30,7 +30,6 @@
       <div class="table-scroll"><table><thead><tr><th>Archivo / proveedor</th><th>Fecha de factura</th><th>Resultado</th><th class="numeric">Neto</th><th class="numeric">IVA</th><th class="numeric">Otros</th><th class="numeric">Total</th><th><span class="sr-only">Detalle</span></th></tr></thead><tbody id="invoice-rows"><tr><td colspan="8" class="empty-table">Cargando historial…</td></tr></tbody></table></div>
       <div class="pagination"><span id="page-info" class="muted small">—</span><div><button id="previous" class="secondary compact" type="button" aria-label="Página anterior">←</button><button id="next" class="secondary compact" type="button" aria-label="Página siguiente">→</button></div></div>
     </section>
-    <section class="panel activity-panel" id="activity"><div class="panel-heading"><h2>Actividad reciente</h2><span class="muted small">Últimos 80 eventos · Conserva hasta 200</span></div><div id="activity-list" class="activity-list"><p class="muted empty-small">Esperando actividad…</p></div></section>
     <footer class="page-footer"><span>Facturas · Monitor de operaciones</span><span id="uptime">—</span></footer>
   </main>
   <dialog id="invoice-dialog"><div class="dialog-heading"><div><p class="eyebrow">DETALLE DE FACTURA</p><h2 id="dialog-title">Factura</h2></div><button id="close-dialog" class="secondary compact" type="button" aria-label="Cerrar detalle">✕</button></div><div id="dialog-content"></div></dialog>

@@ -30,7 +30,7 @@ function renderStatus(data) {
   setMetric("worker-memory",bytes(m.worker_memory),100*m.worker_memory/m.worker_memory_limit,"Límite del OCR: "+bytes(m.worker_memory_limit));
   setMetric("disk",bytes(m.disk_total-m.disk_available),100*(1-m.disk_available/m.disk_total),bytes(m.disk_available)+" libres de "+bytes(m.disk_total));
   text("uptime","Instancia encendida: "+(Number.isFinite(m.uptime_seconds)?Math.floor(m.uptime_seconds/3600)+" h":"—"));
-  renderCurrent(data); renderEvents(data.events || []);
+  renderCurrent(data);
   alertMessage(data.stale?"No llega la señal del worker. El historial sigue disponible, pero las métricas y el procesamiento pueden estar desactualizados.":data.history_error?"No se pudo actualizar Google Sheets. Mostramos la última copia disponible.":data.last_cycle_error?"El último ciclo falló ("+data.last_cycle_error+"). El worker volverá a intentarlo.":data.metrics_error?"No se pudieron obtener las métricas de la instancia.":"");
 }
 function renderCurrent(data) {
@@ -53,19 +53,6 @@ function renderCurrent(data) {
   text("cycle-time","Último ciclo: "+timestamp(data.last_cycle_at)); updateElapsed();
 }
 function updateElapsed() { text("elapsed",state?.current?"Tiempo en curso: "+duration((Date.now()-new Date(state.current.started_at))/1000):"Consulta cada "+(state?.interval || 60)+" s"); }
-function renderEvents(events) {
-  const list=$("activity-list"); list.replaceChildren();
-  if(!events.length) {list.append(el("p","muted empty-small","Todavía no hay eventos de procesamiento."));return;}
-  events.forEach(event=>{
-    const row=el("div","activity-item"), time=el("time","",timestamp(event.at)); time.dateTime=event.at || ""; time.title=timestamp(event.at,true);
-    const content=el("div"); const titles={start:"Automatización iniciada",stop:"Worker detenido",file_start:"Comenzó el procesamiento",result:"Procesamiento finalizado",cycle_end:"Ciclo completado",cycle_error:"Error en el ciclo"};
-    content.append(el("div","",titles[event.kind] || event.kind));
-    let detail=event.archivo || (event.kind==="cycle_end"?event.detected+" detectadas · "+(event.counts?.OK || 0)+" correctas · "+(event.counts?.REVISAR || 0)+" para revisar":event.error || "");
-    if(event.kind==="result" && event.observaciones) detail+=" · "+event.observaciones;
-    if(detail) content.append(el("div","activity-detail",detail));
-    row.append(time,content); if(event.estado) row.append(badge(event.estado)); list.append(row);
-  });
-}
 async function loadInvoices() {
   const requestId=++invoiceRequest;
   const params=new URLSearchParams({page:String(page),size:"25",q:$("search").value,state:$("state-filter").value});
