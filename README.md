@@ -133,6 +133,14 @@ Rollback del panel: `sudo docker compose stop dashboard web`, quitar
 el volumen compartido ni los datos de Google. Conservar la imagen anterior del
 worker para revertir también su instrumentación.
 
+Si los puertos están bloqueados, `compose.tunnel.yaml` agrega un enlace temporal
+HTTPS de Cloudflare. Añadir este archivo a COMPOSE_FILE y ejecutar
+`sudo docker compose up -d tunnel`. Consultar el enlace con
+`sudo docker compose logs tunnel`. Requiere el mismo login; la URL cambia al
+reiniciar el túnel y no tiene garantía de disponibilidad. Su límite es128MiB;
+retirarlo cuando funcione la dirección de sslip.io.
+[Limitaciones de Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
+
 Pruebas locales del panel: instalar `dashboard/requirements.txt` y ejecutar
 `python -m unittest dashboard.test_app`. El procesamiento mantiene sus pruebas
 independientes en `tests/` sin necesitar Flask.

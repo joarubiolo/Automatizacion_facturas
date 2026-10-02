@@ -1,0 +1,18 @@
+# Acceso temporal cuando Oracle todavía bloquea los puertos públicos.
+# El hostname cambia al reiniciar este servicio; la URL de sslip.io es la estable.
+services:
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: ["tunnel", "--no-autoupdate", "--url", "http://dashboard:8080", "--protocol", "http2"]
+    depends_on:
+      dashboard:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.10
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}
