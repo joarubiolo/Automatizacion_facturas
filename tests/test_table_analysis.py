@@ -126,6 +126,10 @@ class AmountTests(unittest.TestCase):
         self.assertEqual(amounts["iva"]["valor"], 99)
         self.assertEqual(validar_factura(parsear_factura(doc))[0], "REVISAR")
 
+    def test_validator_reports_cent_discrepancy_even_for_large_invoice(self):
+        _, errors = validar_factura({"neto": 186300, "iva": 39123, "total": 225423.1})
+        self.assertTrue(any("Total inconsistente" in error for error in errors))
+
     def test_percentage_is_not_read_as_vat_amount(self):
         amounts = inferir_importes({"texto": "Importe Neto Gravado: 100,00\nIVA 21%\nImporte Total: 121,00"})
         self.assertEqual(amounts["iva"]["valor"], 21)

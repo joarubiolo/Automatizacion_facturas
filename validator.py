@@ -39,7 +39,9 @@ def validar_factura(factura: Dict) -> Tuple[str, List[str]]:
     if None not in (neto, iva, total):
         esperado = float(neto) + float(iva) + otros
         diferencia = abs(esperado - float(total))
-        tolerancia = max(1.0, abs(float(total)) * 0.00001)
+        # Todos los importes se almacenan con dos decimales. Un umbral ligado
+        # al tamaño del total ocultaba errores de centavos en facturas grandes.
+        tolerancia = .02
 
         if diferencia > tolerancia:
             errores.append(
