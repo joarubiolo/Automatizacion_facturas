@@ -1,13 +1,14 @@
 """Proceso continuo para una VM: python worker.py [--once]."""
 
 import argparse
-from collections import Counter
 import logging
 import os
-from pathlib import Path
 import signal
+from collections import Counter
+from pathlib import Path
 from threading import Event
 
+from monitoring import publish, start_monitor
 
 LOGGER = logging.getLogger("facturas.worker")
 REQUIRED_IDS = (
@@ -47,9 +48,11 @@ def ejecutar_worker(ciclo, stop, interval, once=False):
                 counts["REVISAR"], counts["DUPLICADO"], counts["ERROR"],
             )
             exit_code = 1 if counts["ERROR"] else 0
-        except Exception as exc:
+            publish("cycle_end", counts=dict(counts), detected=len(archivos))
+        except Exception as exc:  # noqa: BLE001 - el servicio debe reintentar sin publicar datos privados
             LOGGER.error("Ciclo fallido (%s); se reintentará en el próximo ciclo", type(exc).__name__)
             exit_code = 1
+            publish("cycle_error", error=type(exc).__name__)
         if once:
             return exit_code
         stop.wait(interval)
@@ -74,16 +77,25 @@ def main(argv=None):
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda *_: stop.set())
 
+    publish("start", interval=interval)
+    start_monitor(stop)
+
     try:
         # Importar después de validar permite diagnosticar configuración sin
         # conectar a Google. Docker reintenta si falla la conexión inicial.
         from pipeline import ejecutar_ciclo
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - Docker reintenta cualquier fallo de inicio
         LOGGER.error("No se pudo iniciar Google/OCR (%s). Revisar credenciales, permisos y red.", type(exc).__name__)
+        publish("cycle_error", error=type(exc).__name__)
+        stop.set()
         return 1
 
     LOGGER.info("Worker iniciado; intervalo=%ds", interval)
-    return ejecutar_worker(ejecutar_ciclo, stop, interval, once=args.once)
+    try:
+        return ejecutar_worker(ejecutar_ciclo, stop, interval, once=args.once)
+    finally:
+        stop.set()
+        publish("stop")
 
 
 if __name__ == "__main__":

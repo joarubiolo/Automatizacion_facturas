@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ingresar · Facturas</title><link rel="stylesheet" href="/static/styles.css"></head>
+<body class="login-body">
+  <main class="login-card">
+    <div class="brand-mark" aria-hidden="true">F</div>
+    <p class="eyebrow">AUTOMATIZACIÓN DE FACTURAS</p>
+    <h1>Tu operación, a la vista.</h1>
+    <p class="muted">Ingresá para consultar tus facturas y el estado del sistema.</p>
+    <form method="post" action="/login">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="username">Usuario</label><input id="username" name="username" autocomplete="username" required maxlength="100" autofocus>
+      <label for="password">Contraseña</label><input id="password" type="password" name="password" autocomplete="current-password" required maxlength="300">
+      {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
+      <button class="primary" type="submit">Ingresar al panel <span aria-hidden="true">→</span></button>
+    </form>
+    <p class="login-note">Acceso privado · Consulta y monitoreo</p>
+  </main>
+</body></html>

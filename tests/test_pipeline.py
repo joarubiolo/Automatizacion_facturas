@@ -1,10 +1,13 @@
 """Regresiones sin acceso a Google ni descargas de modelos OCR."""
 
 import io
-from pathlib import Path
+import json
+import os
 import runpy
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pymupdf
@@ -70,6 +73,31 @@ class AppPipelineTests(unittest.TestCase):
         self.assertEqual(self.run_process("OK")["estado"], "DUPLICADO")
         self.google.guardar_factura.assert_not_called()
         self.google.mover_a_procesadas.assert_called_once_with("test-id")
+
+    def test_monitor_receives_real_processing_stages(self):
+        observer = MagicMock()
+        with patch.dict(self.process.__globals__, {"publish": observer}):
+            self.run_process("OK")
+        stages = [call.kwargs["stage"] for call in observer.call_args_list if call.args[0] == "stage"]
+        self.assertEqual(stages, ["Leyendo PDF / OCR", "Detectando campos", "Verificando duplicados",
+                                  "Guardando en Sheets", "Organizando en Drive"])
+        self.assertEqual(observer.call_args_list[0].kwargs["archivo"], "test.pdf")
+
+    def test_cycle_syncs_history_and_reports_error_without_secret_message(self):
+        self.google.listar_facturas_entrada.return_value = [self.info]
+        self.google.obtener_registros.return_value = [{"estado": "OK", "archivo": "old.pdf"}]
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(os.environ, {"MONITOR_DIR": directory}), \
+                patch.dict(self.cycle.__globals__, {
+                    "procesar_archivo": MagicMock(side_effect=RuntimeError("private-token")),
+                }):
+            self.cycle()
+            state = json.loads((Path(directory) / "state.json").read_text(encoding="utf-8"))
+            history = json.loads((Path(directory) / "invoices.json").read_text(encoding="utf-8"))
+            self.assertNotIn("private-token", json.dumps(state))
+            self.assertEqual(state["queue"], [])
+            self.assertEqual(state["events"][-1]["estado"], "ERROR")
+            self.assertEqual(history["records"][0]["archivo"], "old.pdf")
 
     def test_failed_invoice_does_not_stop_the_cycle(self):
         second = {**self.info, "id": "second"}

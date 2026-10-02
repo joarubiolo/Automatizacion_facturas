@@ -1,0 +1,62 @@
+services:
+  worker:
+    environment:
+      MONITOR_DIR: /monitor
+    volumes:
+      - monitoring:/monitor
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    image: facturas-dashboard:local
+    environment:
+      MONITOR_DIR: /monitor
+      DASHBOARD_AUTH_FILE: /run/secrets/dashboard_auth
+    secrets:
+      - dashboard_auth
+    volumes:
+      - monitoring:/monitor:ro
+    # Solo accesible localmente y por el proxy; no publicar la API en Internet.
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    init: true
+    mem_limit: 192m
+    cpus: 0.20
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}
+
+  web:
+    image: caddy:2-alpine
+    environment:
+      DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:?Configurar DASHBOARD_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.15
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}
+
+volumes:
+  monitoring:
+  caddy_data:
+  caddy_config:
+
+secrets:
+  dashboard_auth:
+    file: ./.local/dashboard_auth.json

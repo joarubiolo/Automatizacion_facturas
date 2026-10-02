@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+import os
 from datetime import datetime
 
 from extractor import extraer_documento
@@ -13,7 +15,9 @@ from google_services import (
     listar_facturas_entrada,
     mover_a_procesadas,
     mover_a_revisar,
+    obtener_registros,
 )
+from monitoring import publish, sync_records
 from parser import crear_clave_factura, parsear_factura
 from validator import validar_factura
 
@@ -30,11 +34,14 @@ def procesar_archivo(info_archivo):
     nombre = info_archivo["name"]
     mime_type = info_archivo.get("mimeType", "")
 
+    publish("file_start", drive_id=file_id, archivo=nombre)
+
     archivo = descargar_archivo(file_id)
     contenido = archivo.getvalue()
     hash_archivo = calcular_hash(contenido)
 
     # Primero extraemos el texto para poder construir la clave fiscal.
+    publish("stage", stage="Leyendo PDF / OCR")
     documento = extraer_documento(
         archivo=archivo,
         mime_type=mime_type,
@@ -42,10 +49,12 @@ def procesar_archivo(info_archivo):
     )
 
     metodo = documento["metodo"]
+    publish("stage", stage="Detectando campos", metodo=metodo)
     factura = parsear_factura(documento)
     clave_factura = crear_clave_factura(factura)
 
     # Evitamos cargar la misma factura dos veces.
+    publish("stage", stage="Verificando duplicados")
     if factura_ya_registrada(
         drive_id=file_id,
         hash_archivo=hash_archivo,
@@ -66,7 +75,7 @@ def procesar_archivo(info_archivo):
 
     factura.update(
         {
-            "fecha_carga": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            "fecha_carga": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),  # noqa: DTZ005 - formato histórico de Sheets
             "estado": estado,
             "archivo": nombre,
             "drive_id": file_id,
@@ -78,7 +87,10 @@ def procesar_archivo(info_archivo):
 
     # Guardamos SIEMPRE que hayamos podido procesar el archivo.
     # Si faltan datos, aparecerá como REVISAR.
+    publish("stage", stage="Guardando en Sheets", estado=estado)
     guardar_factura(factura)
+
+    publish("stage", stage="Organizando en Drive", estado=estado)
 
     if estado in ("OK", "OK_INFERIDO"):
         mover_a_procesadas(file_id)
@@ -101,6 +113,8 @@ def ejecutar_ciclo():
     un error en una factura no detiene las demás.
     """
     archivos = listar_facturas_entrada()
+    publish("queue", files=[{"id": item["id"], "archivo": item.get("name", "")}
+                            for item in archivos])
 
     resultados = []
 
@@ -108,14 +122,16 @@ def ejecutar_ciclo():
         try:
             resultado = procesar_archivo(info_archivo)
             resultados.append(resultado)
+            publish("result", drive_id=info_archivo["id"], **resultado)
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - aislar cada factura del resto de la cola
             # Si ocurre un error inesperado, intentamos mover el archivo
             # a 03_REVISAR para que no bloquee el sistema.
             try:
                 mover_a_revisar(info_archivo["id"])
-            except Exception:
-                pass
+            except Exception as move_exc:  # noqa: BLE001 - no ocultar el error original
+                logging.getLogger("facturas.worker").warning(
+                    "No se pudo mover el archivo a Revisar (%s)", type(move_exc).__name__)
 
             resultados.append(
                 {
@@ -125,5 +141,14 @@ def ejecutar_ciclo():
                     "observaciones": str(exc),
                 }
             )
+            # No copiar mensajes de excepciones: pueden incluir tokens o URLs.
+            publish("result", drive_id=info_archivo["id"], archivo=info_archivo.get("name", ""),
+                    estado="ERROR", observaciones=type(exc).__name__)
+
+    if os.getenv("MONITOR_DIR"):
+        try:
+            sync_records(obtener_registros())
+        except Exception as exc:  # noqa: BLE001 - error del historial no cambia el resultado fiscal
+            publish("heartbeat", history_error=type(exc).__name__)
 
     return archivos, resultados

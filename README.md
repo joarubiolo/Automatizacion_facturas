@@ -78,6 +78,71 @@ fecha_carga,estado,fecha_factura,tipo,punto_venta,numero,proveedor,cuit_proveedo
 
 ## Docker
 
+## Panel privado de monitoreo en Oracle
+
+El panel consulta el historial de Sheets, la cola, la factura actual y su etapa,
+el resultado de cada archivo y métricas de CPU, memoria, disco y uptime. La API
+no importa PaddleOCR ni tiene las credenciales de Google. Un heartbeat cada5s
+permite distinguir un worker activo de una copia de datos desactualizada.
+El historial se actualiza al terminar cada ciclo (espera por defecto60s).
+
+```text
+monitoring.py                   # Estado y métricas publicados por el worker
+dashboard/
+  app.py, wsgi.py               # API de consulta y acceso con sesión
+  templates/index.html         # Panel con tabla, filtros y detalle
+  templates/login.html         # Acceso privado
+  static/app.js, styles.css    # Interfaz responsive sin dependencias externas
+  requirements.txt, Dockerfile # Imagen liviana: Flask + Gunicorn
+  test_app.py                  # Autenticación, API y seguridad
+compose.dashboard.yaml         # Panel, proxy HTTPS y volumen compartido
+deploy/Caddyfile                # HTTPS automático
+deploy/setup_dashboard.py       # Configuración privada y contraseña aleatoria
+tests/test_monitoring.py        # Persistencia, cola, heartbeat y recursos
+.local/dashboard_auth.json      # Hash de contraseña y clave de sesión (ignorado)
+.local/PANEL_ACCESO.txt          # Datos de acceso (ignorado)
+```
+
+En la VM ya configurada, con `.local/compose.instance.yaml` de4GiB/1CPU:
+
+```bash
+python3 deploy/setup_dashboard.py facturas.159.54.138.63.sslip.io
+sudo chown 10001:10001 .local/dashboard_auth.json
+sudo docker compose build worker dashboard
+sudo docker compose run --rm --no-deps -e MONITOR_DIR= worker python -m unittest discover -s tests
+sudo docker compose run --rm --no-deps dashboard python -m unittest dashboard.test_app
+sudo docker compose up -d --no-build
+```
+
+Oracle debe permitir ingreso TCP80 y443 en la security list o NSG de la subnet.
+El hostname resuelve a la IP mediante sslip.io; si cambia la IP efímera, actualizar
+el dominio. Caddy obtiene y renueva el certificado. La API escucha solamente
+en127.0.0.1:8080 y en la red Docker; la web pública usa HTTPS y requiere login.
+El panel limita su RAM a192MiB y Caddy a128MiB; el OCR conserva su límite4GiB.
+El volumen `monitoring` persiste estados y eventos; está montado read-only en
+el panel. No se monta el Docker socket ni se permite ejecutar comandos.
+
+```bash
+sudo docker compose logs -f --tail=100 worker dashboard web
+sudo docker stats
+```
+
+Rollback del panel: `sudo docker compose stop dashboard web`, quitar
+`compose.dashboard.yaml` de COMPOSE_FILE en `.env` y ejecutar
+`sudo docker compose up -d --no-build worker`. Esto no elimina el historial,
+el volumen compartido ni los datos de Google. Conservar la imagen anterior del
+worker para revertir también su instrumentación.
+
+Pruebas locales del panel: instalar `dashboard/requirements.txt` y ejecutar
+`python -m unittest dashboard.test_app`. El procesamiento mantiene sus pruebas
+independientes en `tests/` sin necesitar Flask.
+
+Documentación: [Flask en producción](https://flask.palletsprojects.com/en/stable/deploying/gunicorn/),
+[HTTPS de Caddy](https://caddyserver.com/docs/automatic-https),
+[reglas de Oracle](https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/scenarioa.htm).
+
+## Imagen del procesador
+
 La imagen usa Python 3.11, PaddlePaddle 3.2.0 CPU y PaddleOCR 3.3.1. El primer
 build necesita Internet para instalar dependencias y descargar modelos.
 

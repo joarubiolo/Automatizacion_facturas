@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Monitor · Facturas</title><link rel="stylesheet" href="/static/styles.css"><script src="/static/app.js" defer></script></head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="Facturas, inicio"><span class="brand-mark">F</span><span>Facturas<span class="brand-sub">CENTRO DE CONTROL</span></span></a>
+    <nav aria-label="Secciones"><a href="#overview" class="nav-active"><span aria-hidden="true">◫</span> Resumen</a><a href="#invoices"><span aria-hidden="true">≡</span> Facturas</a><a href="#activity"><span aria-hidden="true">↗</span> Actividad</a></nav>
+    <div class="sidebar-bottom"><span class="tiny-label">ENTORNO</span><strong>Oracle Cloud</strong><span class="muted">Automatización activa</span>
+      <form action="/logout" method="post"><input name="csrf" type="hidden" value="{{ csrf }}"><button class="logout" type="submit">Cerrar sesión <span aria-hidden="true">↗</span></button></form>
+    </div>
+  </aside>
+  <main class="main" id="overview">
+    <header class="topbar"><span class="breadcrumb">Operaciones <span>/</span> Monitoreo</span><span class="live-label"><i class="dot"></i> Actualización cada 5 s</span></header>
+    <section class="page-heading"><div><p class="eyebrow">TODO BAJO CONTROL</p><h1>Monitor de facturas</h1><p class="muted">Procesamiento, resultados y recursos en un solo lugar.</p></div><button id="refresh" class="secondary" type="button"><span aria-hidden="true">↻</span> Actualizar</button></section>
+    <div id="error-banner" class="alert hidden" role="alert"></div>
+    <section class="status-strip" aria-label="Estado general"><div><span id="health-dot" class="dot"></span><strong id="health-text">Conectando al sistema…</strong><span id="worker-status" class="muted"></span></div><span class="muted" id="last-update">Esperando datos</span></section>
+    <section class="metrics" aria-label="Recursos de la instancia">
+      <article class="metric-card"><div class="card-label">CPU de la instancia <span aria-hidden="true">◴</span></div><div class="metric-value" id="cpu-value">—</div><progress id="cpu-bar" max="100" value="0" aria-label="Uso de CPU"></progress><p id="cpu-detail" class="metric-detail">Midiendo uso</p></article>
+      <article class="metric-card"><div class="card-label">Memoria de la instancia <span aria-hidden="true">▤</span></div><div class="metric-value" id="memory-value">—</div><progress id="memory-bar" max="100" value="0" aria-label="Uso de memoria"></progress><p id="memory-detail" class="metric-detail">Esperando métricas</p></article>
+      <article class="metric-card"><div class="card-label">Memoria del procesador OCR <span aria-hidden="true">▧</span></div><div class="metric-value" id="worker-memory-value">—</div><progress id="worker-memory-bar" max="100" value="0" aria-label="Memoria del worker"></progress><p id="worker-memory-detail" class="metric-detail">Esperando métricas</p></article>
+      <article class="metric-card"><div class="card-label">Disco de la instancia <span aria-hidden="true">◉</span></div><div class="metric-value" id="disk-value">—</div><progress id="disk-bar" max="100" value="0" aria-label="Uso de disco"></progress><p id="disk-detail" class="metric-detail">Esperando métricas</p></article>
+    </section>
+    <section class="processing-grid">
+      <article class="panel processing-panel"><div class="panel-heading"><h2>Procesamiento actual</h2><span id="processing-badge" class="badge neutral">Conectando</span></div><div id="current-content" class="current-content"><div class="idle-symbol" aria-hidden="true">↻</div><h3>Consultando el worker</h3><p class="muted">El estado aparecerá en unos segundos.</p></div><div id="stage-track" class="stage-track hidden" aria-label="Etapas del procesamiento"></div><div class="panel-footer"><span id="elapsed">—</span><span id="cycle-time">Último ciclo: —</span></div></article>
+      <article class="panel queue-panel"><div class="panel-heading"><h2>En espera</h2><span id="queue-count" class="count-pill">0</span></div><div id="queue-list" class="queue-list"><p class="muted empty-small">Consultando la cola…</p></div></article>
+    </section>
+    <section class="panel invoice-panel" id="invoices"><div class="panel-heading"><div><h2>Facturas procesadas</h2><p class="muted small">Historial registrado en Google Sheets</p></div><span id="history-time" class="muted small">Sincronizando…</span></div>
+      <div class="summary-chips" aria-label="Resumen de resultados"><span>Total <strong id="count-total">—</strong></span><span><i class="dot green"></i> Correctas <strong id="count-ok">—</strong></span><span><i class="dot blue"></i> Inferidas <strong id="count-inferred">—</strong></span><span><i class="dot amber"></i> Para revisar <strong id="count-review">—</strong></span></div>
+      <div class="table-toolbar"><label class="search-wrap"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Buscar archivo, proveedor, CUIT o concepto…" aria-label="Buscar facturas" maxlength="200"></label><label class="filter-label">Resultado <select id="state-filter"><option value="">Todos</option><option value="OK">Correcta</option><option value="OK_INFERIDO">Inferida</option><option value="REVISAR">Para revisar</option><option value="ERROR">Error</option></select></label></div>
+      <div class="table-scroll"><table><thead><tr><th>Archivo / proveedor</th><th>Fecha de factura</th><th>Resultado</th><th class="numeric">Neto</th><th class="numeric">IVA</th><th class="numeric">Otros</th><th class="numeric">Total</th><th><span class="sr-only">Detalle</span></th></tr></thead><tbody id="invoice-rows"><tr><td colspan="8" class="empty-table">Cargando historial…</td></tr></tbody></table></div>
+      <div class="pagination"><span id="page-info" class="muted small">—</span><div><button id="previous" class="secondary compact" type="button" aria-label="Página anterior">←</button><button id="next" class="secondary compact" type="button" aria-label="Página siguiente">→</button></div></div>
+    </section>
+    <section class="panel activity-panel" id="activity"><div class="panel-heading"><h2>Actividad reciente</h2><span class="muted small">Últimos 80 eventos · Conserva hasta 200</span></div><div id="activity-list" class="activity-list"><p class="muted empty-small">Esperando actividad…</p></div></section>
+    <footer class="page-footer"><span>Facturas · Monitor de operaciones</span><span id="uptime">—</span></footer>
+  </main>
+  <dialog id="invoice-dialog"><div class="dialog-heading"><div><p class="eyebrow">DETALLE DE FACTURA</p><h2 id="dialog-title">Factura</h2></div><button id="close-dialog" class="secondary compact" type="button" aria-label="Cerrar detalle">✕</button></div><div id="dialog-content"></div></dialog>
+</body></html>
