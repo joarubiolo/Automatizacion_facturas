@@ -18,6 +18,8 @@ from collections import defaultdict, Counter
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+from table_analysis import read_amount_table, read_detail_table
+
 
 PROVEEDORES_POR_CUIT = {
     "27329850027": "M.C Servicios",
@@ -86,6 +88,9 @@ def normalizar_importe(s: str) -> Optional[float]:
             t = "".join(partes[:-1]) + "." + partes[-1]
         else:
             t = "".join(partes)
+    elif t.count(".") == 1 and len(t.rsplit(".", 1)[1]) == 3:
+        # Un importe AR sin centavos puede usar el punto como separador de miles.
+        t = t.replace(".", "")
 
     try:
         return round(float(t), 2)
@@ -418,11 +423,11 @@ def inferir_nombres(documento: Dict, cuit_proveedor: Dict, cuit_cliente: Dict):
 
 
 def _buscar_importe(texto: str, etiquetas: Tuple[str, ...]):
-    patron_num = r"([0-9][0-9\.\,]{2,18})"
+    patron_num = r"([0-9]+(?:[.,][0-9]+)*)(?![0-9.,])"
 
     for etiqueta in etiquetas:
         m = re.search(
-            rf"{etiqueta}[^\n0-9]{{0,30}}{patron_num}",
+            rf"{etiqueta}[ \t:$=]*{patron_num}",
             texto,
             re.I,
         )
@@ -457,6 +462,10 @@ def inferir_importes(documento: Dict):
     texto = documento.get("texto", "")
     texto_totales = _texto_zona(documento, "TOTALES")
     fuente = texto_totales + "\n" + texto
+    tasas = _detectar_alicuotas(fuente)
+    tabla = read_amount_table(documento, normalizar_importe, tasas)
+    if tabla is not None:
+        return tabla
 
     neto, ev_neto = _buscar_importe(
         fuente,
@@ -489,41 +498,28 @@ def inferir_importes(documento: Dict):
     iva, ev_iva = _buscar_importe(
         fuente,
         (
-            r"\bIVA\s*:?",
-            r"\bIVA\s+\d+(?:[\.,]\d+)?%\s*:?",
+            r"\bIVA\s+\d+(?:[\.,]\d+)?\s*%\s*:?",
+            r"(?<!ALICUOTA )\bIVA\s*:?(?!\s*\d+(?:[.,]\d+)?\s*[%\)])",
         ),
     )
 
-    tasas = _detectar_alicuotas(fuente)
-
-    # Si hay neto y alícuota pero IVA no es fiable.
-    if neto is not None and tasas:
+    # Solo completar un dato ausente cuando una unica alicuota lo respalda.
+    # Un importe explicito contradictorio nunca se sobrescribe para cuadrar.
+    if neto is not None and len(tasas) == 1:
         tasa = tasas[0]
         iva_estimado = round(neto * tasa / 100.0, 2)
 
         if iva is None:
             iva = iva_estimado
             ev_iva = f"calculado {neto} x {tasa}%"
-        elif abs(iva - iva_estimado) > max(2.0, iva_estimado * .01):
-            # OCR de IVA contradictorio: prevalece relación matemática.
-            iva = iva_estimado
-            ev_iva = f"corregido por {tasa}% sobre neto"
 
     # Si total falta y tenemos componentes.
     if total is None and neto is not None and iva is not None:
         total = round(neto + iva + otros, 2)
         ev_total = "calculado neto + IVA + otros tributos"
 
-    # Si tenemos total + neto, recomponer IVA.
-    if total is not None and neto is not None:
-        iva_diff = round(total - neto - otros, 2)
-        if iva_diff >= 0:
-            if iva is None or abs((neto + iva + otros) - total) > 2:
-                iva = iva_diff
-                ev_iva = "calculado total - neto - otros tributos"
-
     # Si solo tenemos total y alícuota, inferir neto/IVA.
-    if total is not None and neto is None and tasas:
+    if total is not None and neto is None and iva is None and len(tasas) == 1:
         tasa = tasas[0]
         base = total - otros
         neto = round(base / (1 + tasa / 100.0), 2)
@@ -560,6 +556,9 @@ def inferir_importes(documento: Dict):
 
 
 def inferir_detalle(documento: Dict) -> Dict:
+    tabla = read_detail_table(documento)
+    if tabla is not None:
+        return tabla
     candidatos = []
 
     for linea in _lineas(documento):
@@ -579,6 +578,8 @@ def inferir_detalle(documento: Dict) -> Dict:
             "alícuota",
             "subtotal",
             "total",
+            "recibi", "recibí", "hojas", "cuenta corriente",
+            "son pesos", "c.a.i", "c.a.e", "percepciones",
         )):
             continue
 
@@ -665,6 +666,7 @@ def inferir_factura(documento: Dict) -> Dict:
     salida = {k: v["valor"] for k, v in meta.items()}
     salida["_meta"] = meta
     salida["_metodo_extraccion"] = documento.get("metodo", "")
+    salida["_alertas_extraccion"] = importes.get("_alertas", [])
     salida["_campos_inferidos"] = [
         k
         for k, v in meta.items()

@@ -4,7 +4,7 @@ from inference_engine import cuit_es_valido
 
 
 def validar_factura(factura: Dict) -> Tuple[str, List[str]]:
-    errores: List[str] = []
+    errores: List[str] = list(factura.get("_alertas_extraccion") or [])
 
     obligatorios = (
         ("fecha_factura", "Fecha de factura no detectada"),
@@ -54,8 +54,10 @@ def validar_factura(factura: Dict) -> Tuple[str, List[str]]:
         "punto_venta",
         "numero",
         "cuit_proveedor",
+        "detalle",
         "neto",
         "iva",
+        "importe_otros_tributos",
         "total",
     ):
         m = meta.get(campo) or {}

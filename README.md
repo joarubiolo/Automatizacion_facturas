@@ -12,6 +12,33 @@ las registra en Google Sheets y mueve los archivos a PROCESADAS o REVISAR.
    CUIT y la suma `neto + iva + importe_otros_tributos = total`.
 5. `OK` y `OK_INFERIDO` van a PROCESADAS; `REVISAR` va a revisión.
 
+### Lectura de tablas y escaneos
+
+Los escaneos se leen en franjas superpuestas a mayor resolución, conservando
+las coordenadas de página y evitando duplicar líneas. El concepto se obtiene
+de la columna DESCRIPCIÓN, hasta el comienzo del resumen financiero; no incluye
+leyendas de recibo ni pagos.
+
+El OCR latino conserva el texto en español. Una segunda lectura con
+`PP-OCRv5_server_rec` se aplica a precios, resumen financiero y total en letras.
+Los importes se asocian por columnas y se contrastan al centavo con el total,
+la alícuota y, si no hay descuentos, cantidades por precios unitarios. Un neto
+reconstruido desde artículos queda identificado como inferido. Los importes
+explícitos contradictorios se conservan para revisión: no se modifica el IVA
+solo para hacer cuadrar la suma.
+
+Los ajustes están en `.env.example`. Los tres modelos se descargan durante el
+build; no se envían facturas a servicios OCR externos. Referencias de los motores:
+[parámetros de PaddleOCR](https://paddlepaddle.github.io/PaddleOCR/main/en/version3.x/pipeline_usage/OCR.html),
+[modelos de reconocimiento](https://paddlepaddle.github.io/PaddleOCR/main/en/version3.x/module_usage/text_recognition.html)
+y [calidad de imagen en Tesseract](https://tesseract-ocr.github.io/tessdoc/ImproveQuality.html).
+
+Verificación del 2 de octubre de 2026: el escaneo de referencia devuelve ambos
+conceptos, neto 186.300,00, IVA 39.123,00, otros 0,00 y total 225.423,00 en la
+prueba local. Sigue en REVISAR por el tipo de comprobante no detectado; el número
+tampoco debe considerarse verificado. La prueba con una factura no garantiza
+la misma precisión en otros formatos.
+
 **Oracle Cloud:** el modo `worker.py` procesa periódicamente sin navegador abierto.
 La instalación está en [ORACLE_DEPLOY.md](ORACLE_DEPLOY.md). `compose.oracle.yaml`
 configura un único proceso ARM64, reinicio automático y credenciales montadas.

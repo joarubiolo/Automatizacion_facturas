@@ -30,7 +30,7 @@ from typing import Dict, List, Tuple, Any
 
 import numpy as np
 import pymupdf
-from PIL import Image
+from PIL import Image, ImageOps, ImageFilter
 
 import config
 
@@ -87,8 +87,8 @@ def _resultado_a_dict(res: Any) -> Dict:
     )
 
 
-@lru_cache(maxsize=1)
-def _get_paddle():
+@lru_cache(maxsize=2)
+def _get_paddle(recognition_model=None):
     from paddleocr import PaddleOCR
 
     kwargs = {
@@ -104,7 +104,7 @@ def _get_paddle():
             "PADDLE_DET_MODEL",
             "PP-OCRv5_mobile_det",
         ),
-        "text_recognition_model_name": getattr(
+        "text_recognition_model_name": recognition_model or getattr(
             config,
             "PADDLE_REC_MODEL",
             "latin_PP-OCRv5_mobile_rec",
@@ -125,8 +125,8 @@ def _get_paddle():
     return PaddleOCR(**kwargs)
 
 
-def _paddle_tokens(imagen: Image.Image, pagina: int) -> List[Dict]:
-    ocr = _get_paddle()
+def _paddle_tokens(imagen: Image.Image, pagina: int, recognition_model=None) -> List[Dict]:
+    ocr = _get_paddle(recognition_model)
 
     arr = np.asarray(imagen.convert("RGB"))
     resultados = ocr.predict(arr)
@@ -255,8 +255,8 @@ def _agrupar_lineas(tokens: List[Dict]) -> List[Dict]:
     return sorted(salida, key=lambda l: (l["pagina"], l["y_rel"], l["x_rel"]))
 
 
-def _ocr_paddle(imagen: Image.Image, pagina: int) -> Dict:
-    tokens = _paddle_tokens(imagen, pagina)
+def _ocr_paddle(imagen: Image.Image, pagina: int, recognition_model=None) -> Dict:
+    tokens = _paddle_tokens(imagen, pagina, recognition_model)
     lineas = _agrupar_lineas(tokens)
     texto = _normalizar_texto("\n".join(l["texto"] for l in lineas))
 
@@ -268,7 +268,7 @@ def _ocr_paddle(imagen: Image.Image, pagina: int) -> Dict:
     }
 
 
-def _ocr_tesseract(imagen: Image.Image, pagina: int) -> Dict:
+def _ocr_tesseract(imagen: Image.Image, pagina: int, psm: int = 6) -> Dict:
     """
     Fallback únicamente. No es el motor principal.
     """
@@ -284,7 +284,7 @@ def _ocr_tesseract(imagen: Image.Image, pagina: int) -> Dict:
     datos = pytesseract.image_to_data(
         imagen,
         lang=getattr(config, "TESSERACT_LANG", "spa"),
-        config="--oem 3 --psm 6",
+        config=f"--oem 3 --psm {psm}",
         output_type=Output.DICT,
     )
 
@@ -330,13 +330,121 @@ def _ocr_tesseract(imagen: Image.Image, pagina: int) -> Dict:
     }
 
 
-def _imagen_de_pagina(pagina) -> Image.Image:
-    escala = float(getattr(config, "OCR_SCALE", 2.5))
+def _imagen_de_pagina(pagina, escala=None) -> Image.Image:
+    escala = float(escala or getattr(config, "OCR_SCALE", 2.5))
     pix = pagina.get_pixmap(
         matrix=pymupdf.Matrix(escala, escala),
         alpha=False,
     )
     return Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+
+
+def _reubicar_tokens(tokens, imagen, izquierda=0, arriba=0):
+    ancho, alto = imagen.size
+    for token in tokens:
+        token["x"] += izquierda
+        token["y"] += arriba
+        token["x_rel"] = token["x"] / ancho
+        token["y_rel"] = token["y"] / alto
+        token["zona"] = _zona_por_y(token["y_rel"])
+    return tokens
+
+
+def _ocr_regiones(imagen: Image.Image, pagina: int) -> Dict:
+    """Las franjas preservan letras pequenas sin ampliar toda la inferencia.
+
+    El solapamiento evita cortar una linea; cada caja pertenece a una sola
+    franja por su centro. Las coordenadas siempre corresponden a la pagina.
+    """
+    ancho, alto = imagen.size
+    paso = max(400, int(ancho * .65))
+    margen = max(30, int(alto * .025))
+    tokens = []
+    motores = set()
+    for inicio in range(0, alto, paso):
+        fin = min(alto, inicio + paso)
+        arriba, abajo = max(0, inicio - margen), min(alto, fin + margen)
+        recorte = imagen.crop((0, arriba, ancho, abajo))
+        resultado = _ocr_con_fallback(recorte, pagina)
+        motores.add(resultado["motor"])
+        for token in _reubicar_tokens(resultado["tokens"], imagen, arriba=arriba):
+            centro = token["y"] + token["h"] / 2
+            if inicio <= centro < fin:
+                tokens.append(token)
+
+    lineas = _agrupar_lineas(tokens)
+    alternativas = []
+    modelo_numerico = getattr(config, "PADDLE_NUMERIC_REC_MODEL", "")
+    if modelo_numerico:
+        for indice, linea in enumerate(lineas):
+            texto = linea["texto"].lower()
+            es_detalle = ("descripcion" in texto or "descripción" in texto) and "precio" in texto
+            es_letras = re.search(r"son\s+[pf]esos", texto)
+            if not es_detalle and not es_letras:
+                continue
+            altura = max(t["h"] for t in linea["tokens"])
+            arriba = max(0, int(min(t["y"] for t in linea["tokens"]) - altura))
+            abajo = max(t["y"] + t["h"] for t in linea["tokens"]) + altura
+            if es_detalle:
+                for siguiente in lineas[indice + 1:]:
+                    fila = siguiente["tokens"]
+                    y = min(t["y"] for t in fila)
+                    if y - abajo > altura * 3 or re.search(r"subtotal|total|recibi|son.*hojas", siguiente["texto"], re.I):
+                        break
+                    abajo = max(t["y"] + t["h"] for t in fila) + altura
+            recorte = imagen.crop((0, arriba, ancho, min(alto, int(abajo))))
+            try:
+                lectura = _ocr_paddle(recorte, pagina, modelo_numerico)
+                for t in lectura["tokens"]:
+                    t["lectura"] = "NUMERIC_DETAIL" if es_detalle else "TOTAL_WORDS"
+                alternativas.extend(_reubicar_tokens(lectura["tokens"], imagen, arriba=arriba))
+            except Exception:
+                pass
+    # Releer solamente la tabla financiera, identificada por sus etiquetas.
+    # Un desenfoque leve reduce la trama del papel; las variantes se guardan
+    # como evidencia alternativa, nunca como importes forzados por aritmetica.
+    for linea in lineas:
+        texto = linea["texto"].lower()
+        if "subtotal" not in texto and "sub total" not in texto:
+            continue
+        if "iva" not in texto and "alicuota" not in texto:
+            continue
+        fila = linea["tokens"]
+        altura = max(t["h"] for t in fila)
+        izquierda = max(0, int(min(t["x"] for t in fila if "sub" in t["texto"].lower()) - altura * .5))
+        arriba = max(0, int(min(t["y"] for t in fila) - altura * .25))
+        siguientes = [min(t["y"] for t in l["tokens"]) for l in lineas
+                      if re.search(r"\btotal\b", l["texto"], re.I)
+                      and min(t["y"] for t in l["tokens"]) > arriba + altura]
+        abajo = min(siguientes) if siguientes else min(alto, int(arriba + altura * 4))
+        recorte = imagen.crop((izquierda, arriba, ancho, abajo))
+        for radio in (1.0, 1.5):
+            gris = ImageOps.grayscale(recorte).filter(ImageFilter.GaussianBlur(radio)).convert("RGB")
+            try:
+                lectura = _ocr_paddle(gris, pagina, modelo_numerico or None)
+                for t in lectura["tokens"]:
+                    t["lectura"] = f"PADDLE_DESCREEN_{radio}"
+                alternativas.extend(_reubicar_tokens(lectura["tokens"], imagen, izquierda, arriba))
+            except Exception:
+                pass  # La lectura principal sigue disponible.
+            if radio == 1.0 and getattr(config, "USE_TESSERACT_FALLBACK", True):
+                try:
+                    # El bloque izquierdo contiene Neto / Alicuota / IVA.
+                    # Separarlo del resto evita que Tesseract interprete las
+                    # columnas vacias y la trama como un parrafo de ruido.
+                    percepciones = [t["x"] for t in fila if "percep" in t["texto"].lower()]
+                    limite = int(min(percepciones) + altura * 2 - izquierda) if percepciones else gris.width
+                    lectura = _ocr_tesseract(gris.crop((0, 0, min(gris.width, limite), gris.height)), pagina)
+                    for t in lectura["tokens"]:
+                        t["lectura"] = "TESSERACT_DESCREEN"
+                    alternativas.extend(_reubicar_tokens(lectura["tokens"], imagen, izquierda, arriba))
+                except Exception:
+                    pass
+    return {
+        "texto": _normalizar_texto("\n".join(l["texto"] for l in lineas)),
+        "tokens": tokens, "lineas": lineas, "ocr_alternativas": alternativas,
+        "motor": "PADDLEOCR" if motores == {"PADDLEOCR"} else "OCR_MIXTO/FALLBACK",
+    }
 
 
 def _ocr_con_fallback(imagen: Image.Image, pagina: int) -> Dict:
@@ -403,8 +511,12 @@ def extraer_documento(
         todas_lineas = []
 
         for indice, pagina in enumerate(doc, start=1):
-            imagen = _imagen_de_pagina(pagina)
-            r = _ocr_con_fallback(imagen, indice)
+            if getattr(config, "OCR_REFINE_REGIONS", True):
+                imagen = _imagen_de_pagina(pagina, getattr(config, "OCR_REGION_SCALE", 3.0))
+                r = _ocr_regiones(imagen, indice)
+            else:
+                imagen = _imagen_de_pagina(pagina)
+                r = _ocr_con_fallback(imagen, indice)
             paginas.append(r)
             todos_tokens.extend(r["tokens"])
             todas_lineas.extend(r["lineas"])
@@ -423,6 +535,7 @@ def extraer_documento(
             "tokens": todos_tokens,
             "lineas": todas_lineas,
             "paginas": paginas,
+            "ocr_alternativas": [t for p in paginas for t in p.get("ocr_alternativas", [])],
         }
 
     # ---------------------------------------------------------
@@ -431,7 +544,7 @@ def extraer_documento(
     if mime_type.startswith("image/") or extension in {"jpg", "jpeg", "png"}:
         archivo.seek(0)
         imagen = Image.open(archivo).convert("RGB")
-        r = _ocr_con_fallback(imagen, 1)
+        r = _ocr_regiones(imagen, 1) if getattr(config, "OCR_REFINE_REGIONS", True) else _ocr_con_fallback(imagen, 1)
 
         return {
             "texto": r["texto"],
@@ -439,6 +552,7 @@ def extraer_documento(
             "tokens": r["tokens"],
             "lineas": r["lineas"],
             "paginas": [r],
+            "ocr_alternativas": r.get("ocr_alternativas", []),
         }
 
     raise ValueError(

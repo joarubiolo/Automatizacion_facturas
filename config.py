@@ -39,6 +39,9 @@ PADDLE_DET_LIMIT_SIDE_LEN = int(
 )
 
 OCR_SCALE = float(os.getenv("OCR_SCALE", "2.0"))
+OCR_REGION_SCALE = float(os.getenv("OCR_REGION_SCALE", "3.0"))
+OCR_REFINE_REGIONS = os.getenv("OCR_REFINE_REGIONS", "true").lower() == "true"
+PADDLE_NUMERIC_REC_MODEL = os.getenv("PADDLE_NUMERIC_REC_MODEL", "PP-OCRv5_server_rec")
 
 if platform.system() == "Windows":
     TESSERACT_CMD = os.getenv(
