@@ -61,6 +61,9 @@ def main(argv=None):
     parser.add_argument("--once", action="store_true", help="Procesar un ciclo y salir")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # Paddle cambia el nivel del logger raíz a WARNING al cargar los modelos.
+    # Un nivel propio mantiene visibles los resúmenes y no altera sus logs.
+    LOGGER.setLevel(logging.INFO)
     try:
         interval = validar_configuracion()
     except ValueError as exc:

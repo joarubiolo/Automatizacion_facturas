@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 import tempfile
@@ -64,6 +65,19 @@ class WorkerTests(unittest.TestCase):
                 patch.dict("sys.modules", {"pipeline": None}), \
                 self.assertLogs(worker.LOGGER, level="ERROR"):
             self.assertEqual(worker.main(["--once"]), 1)
+
+    def test_cycle_summary_survives_ocr_changing_root_log_level(self):
+        def cycle():
+            logging.getLogger().setLevel(logging.WARNING)
+            return [], []
+
+        with patch.object(worker, "validar_configuracion", return_value=60), \
+                patch.object(worker.signal, "signal"), \
+                patch.object(worker.LOGGER, "level", logging.NOTSET), \
+                patch.dict("sys.modules", {"pipeline": SimpleNamespace(ejecutar_ciclo=cycle)}), \
+                self.assertLogs(level="INFO") as logs:
+            self.assertEqual(worker.main(["--once"]), 0)
+        self.assertTrue(any("Ciclo: detectadas=0" in line for line in logs.output))
 
     def test_configuration_requires_existing_secret_and_positive_interval(self):
         with tempfile.TemporaryDirectory() as directory:
