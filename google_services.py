@@ -106,7 +106,9 @@ def mover_a_revisar(file_id: str) -> None:
 
 
 def obtener_registros() -> List[Dict]:
-    return sheet.get_all_records()
+    # Conservar la coma decimal y los ceros iniciales de los identificadores.
+    # La conversión automática de gspread interpreta "730460,45" como 73046045.
+    return sheet.get_all_records(numericise_ignore=["all"])
 
 
 def factura_ya_registrada(
