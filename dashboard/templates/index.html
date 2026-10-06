@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="es">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Monitor · Facturas</title><link rel="stylesheet" href="/static/styles.css"><script src="/static/app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="{{ csrf }}"><title>Monitor · Facturas</title><link rel="stylesheet" href="/static/styles.css"><script src="/static/app.js" defer></script></head>
 <body>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="Facturas, inicio"><span class="brand-mark">F</span><span>Facturas<span class="brand-sub">CENTRO DE CONTROL</span></span></a>
-    <nav aria-label="Secciones"><a href="#overview" class="nav-active"><span aria-hidden="true">◫</span> Resumen</a><a href="#invoices"><span aria-hidden="true">≡</span> Facturas</a></nav>
+    <nav aria-label="Secciones"><a href="#overview" class="nav-active"><span aria-hidden="true">◫</span> Resumen</a><a href="#invoices"><span aria-hidden="true">≡</span> Facturas</a><a href="#manual" id="manual-nav"><span aria-hidden="true">＋</span> Carga manual</a></nav>
     <div class="sidebar-bottom"><span class="tiny-label">ENTORNO</span><strong>Oracle Cloud</strong><span class="muted">Automatización activa</span>
       <form action="/logout" method="post"><input name="csrf" type="hidden" value="{{ csrf }}"><button class="logout" type="submit">Cerrar sesión <span aria-hidden="true">↗</span></button></form>
     </div>
@@ -14,6 +14,11 @@
     <section class="page-heading"><div><p class="eyebrow">TODO BAJO CONTROL</p><h1>Monitor de facturas</h1><p class="muted">Procesamiento, resultados y recursos en un solo lugar.</p></div><button id="refresh" class="secondary" type="button"><span aria-hidden="true">↻</span> Actualizar</button></section>
     <div id="error-banner" class="alert hidden" role="alert"></div>
     <section class="status-strip" aria-label="Estado general"><div><span id="health-dot" class="dot"></span><strong id="health-text">Conectando al sistema…</strong><span id="worker-status" class="muted"></span></div><span class="muted" id="last-update">Esperando datos</span></section>
+    <section class="panel financial-panel" aria-label="Totales de facturas">
+      <div class="panel-heading"><div><p class="eyebrow">RESUMEN DEL PERIODO</p><h2>Totales de facturas</h2><p class="muted small">Por fecha de emisión · incluye todos los resultados</p></div><div class="period-filters"><label>Mes<select id="month-filter" aria-label="Mes del resumen"><option value="">Todos los meses</option>{% for month in ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'] %}<option value="{{ loop.index }}">{{ month }}</option>{% endfor %}</select></label><label>Año<select id="year-filter" aria-label="Año del resumen"><option value="">Todos los años</option></select></label></div></div>
+      <div class="financial-grid"><article class="financial-main"><span class="tiny-label">IMPORTE TOTAL</span><strong id="period-total">—</strong><span id="period-count" class="muted">Consultando facturas</span></article><article><span class="card-label">Neto</span><strong id="period-net">—</strong></article><article><span class="card-label">IVA</span><strong id="period-vat">—</strong></article><article><span class="card-label">Otros tributos</span><strong id="period-other">—</strong></article></div>
+      <div class="financial-note muted small" id="period-note" aria-live="polite">Los importes del periodo seleccionado aparecerán aquí.</div>
+    </section>
     <section class="metrics" aria-label="Recursos de la instancia">
       <article class="metric-card"><div class="card-label">CPU de la instancia <span aria-hidden="true">◴</span></div><div class="metric-value" id="cpu-value">—</div><progress id="cpu-bar" max="100" value="0" aria-label="Uso de CPU"></progress><p id="cpu-detail" class="metric-detail">Midiendo uso</p></article>
       <article class="metric-card"><div class="card-label">Memoria de la instancia <span aria-hidden="true">▤</span></div><div class="metric-value" id="memory-value">—</div><progress id="memory-bar" max="100" value="0" aria-label="Uso de memoria"></progress><p id="memory-detail" class="metric-detail">Esperando métricas</p></article>
@@ -24,13 +29,44 @@
       <article class="panel processing-panel"><div class="panel-heading"><h2>Procesamiento actual</h2><span id="processing-badge" class="badge neutral">Conectando</span></div><div id="current-content" class="current-content"><div class="idle-symbol" aria-hidden="true">↻</div><h3>Consultando el worker</h3><p class="muted">El estado aparecerá en unos segundos.</p></div><div id="stage-track" class="stage-track hidden" aria-label="Etapas del procesamiento"></div><div class="panel-footer"><span id="elapsed">—</span><span id="cycle-time">Último ciclo: —</span></div></article>
       <article class="panel queue-panel"><div class="panel-heading"><h2>En espera</h2><span id="queue-count" class="count-pill">0</span></div><div id="queue-list" class="queue-list"><p class="muted empty-small">Consultando la cola…</p></div></article>
     </section>
-    <section class="panel invoice-panel" id="invoices"><div class="panel-heading"><div><h2>Facturas procesadas</h2><p class="muted small">Historial registrado en Google Sheets</p></div><span id="history-time" class="muted small">Sincronizando…</span></div>
+    <section class="panel invoice-panel" id="invoices"><div class="panel-heading"><div><h2>Facturas procesadas</h2><p class="muted small">Historial registrado en Google Sheets</p></div><div class="history-actions"><span id="history-time" class="muted small">Sincronizando…</span><button id="new-invoice" class="primary action-primary" type="button">＋ Nueva factura</button></div></div>
       <div class="summary-chips" aria-label="Resumen de resultados"><span>Total <strong id="count-total">—</strong></span><span><i class="dot green"></i> Correctas <strong id="count-ok">—</strong></span><span><i class="dot blue"></i> Inferidas <strong id="count-inferred">—</strong></span><span><i class="dot amber"></i> Para revisar <strong id="count-review">—</strong></span></div>
       <div class="table-toolbar"><label class="search-wrap"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Buscar archivo, proveedor, CUIT o concepto…" aria-label="Buscar facturas" maxlength="200"></label><label class="filter-label">Resultado <select id="state-filter"><option value="">Todos</option><option value="OK">Correcta</option><option value="OK_INFERIDO">Inferida</option><option value="REVISAR">Para revisar</option><option value="ERROR">Error</option></select></label></div>
       <div class="table-scroll"><table><thead><tr><th>Archivo / proveedor</th><th>Fecha de factura</th><th>Resultado</th><th class="numeric">Neto</th><th class="numeric">IVA</th><th class="numeric">Otros</th><th class="numeric">Total</th><th><span class="sr-only">Detalle</span></th></tr></thead><tbody id="invoice-rows"><tr><td colspan="8" class="empty-table">Cargando historial…</td></tr></tbody></table></div>
       <div class="pagination"><span id="page-info" class="muted small">—</span><div><button id="previous" class="secondary compact" type="button" aria-label="Página anterior">←</button><button id="next" class="secondary compact" type="button" aria-label="Página siguiente">→</button></div></div>
     </section>
+    {% macro field(name, label, type='text', required=false, maxlength=250, inputmode='text', placeholder='') -%}
+    <label class="invoice-field" for="field-{{ name }}"><span>{{ label }}{% if required %} <span class="required-mark">*</span>{% endif %}</span><input id="field-{{ name }}" name="{{ name }}" type="{{ type }}" {% if required %}required{% endif %} maxlength="{{ maxlength }}" inputmode="{{ inputmode }}" placeholder="{{ placeholder }}" aria-describedby="error-{{ name }}"><small id="error-{{ name }}" class="field-error" aria-live="polite"></small></label>
+    {%- endmacro %}
+    <section class="panel manual-panel" id="manual"><div class="panel-heading"><div><h2 id="editor-heading">Carga manual</h2><p id="editor-caption" class="muted small">Ingresá los datos de una factura o elegí Corregir en el historial.</p></div><span id="editor-mode" class="badge neutral">Nueva factura</span></div>
+      <details id="manual-details"><summary>Ingresar los datos de una factura <span aria-hidden="true">＋</span></summary>
+      <form id="invoice-form" novalidate data-enabled="{{ 'true' if editing_enabled else 'false' }}">
+        <div id="form-message" class="form-message hidden" role="status" tabindex="-1"></div>
+        <fieldset><legend>Comprobante</legend><div class="invoice-form-grid">
+          {{ field('fecha_factura','Fecha de emisión','date',true) }}
+          <label class="invoice-field" for="field-tipo"><span>Tipo de factura</span><select id="field-tipo" name="tipo"><option value="">Seleccionar</option>{% for letter in ['A','B','C','E','M','T'] %}<option>{{ letter }}</option>{% endfor %}</select><small id="error-tipo" class="field-error"></small></label>
+          {{ field('punto_venta','Punto de venta',maxlength=5,inputmode='numeric',placeholder='00002') }}
+          {{ field('numero','Número de factura',maxlength=8,inputmode='numeric',placeholder='00000209') }}
+          {{ field('archivo','Nombre o referencia',placeholder='Factura de servicios de septiembre') }}
+          <label class="invoice-field" for="field-estado"><span>Resultado</span><select id="field-estado" name="estado"><option value="">Validar al guardar</option><option value="REVISAR">Dejar para revisar</option></select><small id="error-estado" class="field-error"></small></label>
+        </div></fieldset>
+        <fieldset><legend>Proveedor y cliente</legend><div class="invoice-form-grid">
+          {{ field('proveedor','Nombre / razón social del proveedor',required=true) }}
+          {{ field('cuit_proveedor','CUIT del proveedor',maxlength=13,inputmode='numeric',placeholder='20-24657115-6') }}
+          {{ field('cliente','Nombre / razón social del cliente') }}
+          {{ field('cuit_cliente','CUIT del cliente',maxlength=13,inputmode='numeric',placeholder='30-56128668-6') }}
+        </div></fieldset>
+        <fieldset><legend>Concepto e importes</legend><label class="invoice-field" for="field-detalle"><span>Concepto / detalle</span><textarea id="field-detalle" name="detalle" rows="3" maxlength="5000" placeholder="Descripción de los productos o servicios"></textarea><small id="error-detalle" class="field-error"></small></label><div class="invoice-form-grid amount-fields">
+          {{ field('neto','Neto',inputmode='decimal',placeholder='0,00') }}
+          {{ field('iva','IVA',inputmode='decimal',placeholder='0,00') }}
+          {{ field('importe_otros_tributos','Otros tributos',inputmode='decimal',placeholder='0,00') }}
+          {{ field('total','Total',required=true,inputmode='decimal',placeholder='0,00') }}
+        </div><div class="amount-check"><p id="amount-check-text" class="muted small">Ingresá los importes con hasta dos decimales.</p><button id="calculate-total" class="secondary compact" type="button">Calcular total</button></div></fieldset>
+        <fieldset><legend>Autorización y notas</legend><div class="invoice-form-grid">{{ field('cae','CAE',maxlength=14,inputmode='numeric') }}{{ field('vencimiento_cae','Vencimiento del CAE','date') }}</div><label class="invoice-field" for="field-observaciones"><span>Observaciones</span><textarea id="field-observaciones" name="observaciones" rows="2" maxlength="2000" placeholder="Notas para facilitar la revisión"></textarea><small id="error-observaciones" class="field-error"></small></label></fieldset>
+        <div class="form-bottom"><p class="muted small">* Campos obligatorios. Los datos incompletos o importes que no coincidan quedan para revisar.</p><div><button id="cancel-edit" class="secondary" type="button">Cancelar</button><button id="save-invoice" class="primary action-primary" type="submit">Guardar factura</button></div></div>
+      </form></details>
+    </section>
     <footer class="page-footer"><span>Facturas · Monitor de operaciones</span><span id="uptime">—</span></footer>
   </main>
-  <dialog id="invoice-dialog"><div class="dialog-heading"><div><p class="eyebrow">DETALLE DE FACTURA</p><h2 id="dialog-title">Factura</h2></div><button id="close-dialog" class="secondary compact" type="button" aria-label="Cerrar detalle">✕</button></div><div id="dialog-content"></div></dialog>
+  <dialog id="invoice-dialog"><div class="dialog-heading"><div><p class="eyebrow">DETALLE DE FACTURA</p><h2 id="dialog-title">Factura</h2></div><button id="close-dialog" class="secondary compact" type="button" aria-label="Cerrar detalle">✕</button></div><div id="dialog-content"></div><div class="dialog-footer"><button id="edit-detail" class="primary action-primary" type="button">Corregir factura</button></div></dialog>
 </body></html>

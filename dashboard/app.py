@@ -1,4 +1,4 @@
-"""API privada: lee snapshots; nunca importa el OCR ni se conecta a Google."""
+"""Panel privado: monitoreo, resumen y gestión de datos en Sheets, sin OCR."""
 
 import json
 import os
@@ -13,6 +13,15 @@ from threading import Lock
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash
+
+from dashboard.invoices import (
+    InvoiceError,
+    invoice_date,
+    period_records,
+    public_record,
+    summarize,
+)
+from dashboard.sheets import SheetsStore
 
 FIELDS = (
     "fecha_carga", "estado", "fecha_factura", "tipo", "punto_venta", "numero",
@@ -73,7 +82,7 @@ class Snapshots:
                 return {}
 
 
-def create_app(auth=None, directory=None, secure=True):
+def create_app(auth=None, directory=None, secure=True, store=None):
     if auth is None:
         auth = json.loads(Path(os.environ["DASHBOARD_AUTH_FILE"]).read_text(encoding="utf-8"))
     if not all(auth.get(key) for key in ("username", "password_hash", "session_secret")):
@@ -81,10 +90,12 @@ def create_app(auth=None, directory=None, secure=True):
     app = Flask(__name__)
     app.config.update(SECRET_KEY=auth["session_secret"], SESSION_COOKIE_SECURE=secure,
                       SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Strict",
-                      PERMANENT_SESSION_LIFETIME=28800, MAX_CONTENT_LENGTH=8192)
+                      PERMANENT_SESSION_LIFETIME=28800, MAX_CONTENT_LENGTH=32768)
     # Solo el proxy interno tiene acceso al puerto de la API.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
     snapshots = Snapshots(directory or os.getenv("MONITOR_DIR", "/monitor"))
+    if store is None and os.getenv("DASHBOARD_GOOGLE_FILE"):
+        store = SheetsStore()
     limiter = LoginLimiter()
 
     @app.after_request
@@ -142,7 +153,7 @@ def create_app(auth=None, directory=None, secure=True):
     @app.get("/")
     @protected
     def index():
-        return render_template("index.html", csrf=session["csrf"])
+        return render_template("index.html", csrf=session["csrf"], editing_enabled=store is not None)
 
     @app.get("/api/status")
     @protected
@@ -181,21 +192,54 @@ def create_app(auth=None, directory=None, secure=True):
         except ValueError:
             return jsonify(error="Paginación inválida"), 400
         data = snapshots.read("invoices.json")
-        records = data.get("records", [])
+        all_records = data.get("records", [])
+        if store is not None:
+            all_records = store.view(all_records)
+        try:
+            records = period_records(all_records, request.args.get("month", ""), request.args.get("year", ""))
+        except InvoiceError as exc:
+            return jsonify(error=str(exc)), exc.status
         counts = Counter(str(row.get("estado", "")) for row in records)
         state_filter = request.args.get("state", "")[:30]
         query = request.args.get("q", "")[:200].casefold().strip()
         filtered = []
+        references = {id(row): index for index, row in enumerate(all_records)}
         for row in reversed(records):
             if state_filter and str(row.get("estado", "")) != state_filter:
                 continue
             if query and query not in " ".join(str(row.get(key, "")) for key in
                                                ("archivo", "proveedor", "detalle", "numero", "cuit_proveedor")).casefold():
                 continue
-            filtered.append({key: row.get(key, "") for key in FIELDS})
+            filtered.append(public_record(row, references[id(row)]))
         start = (page - 1) * size
-        return jsonify(records=filtered[start:start + size], total=len(filtered), all_total=len(records),
-                       page=page, size=size, counts=dict(counts), synced_at=data.get("synced_at"))
+        years = sorted({date.year for row in all_records if (date := invoice_date(row.get("fecha_factura")))}, reverse=True)
+        return jsonify(records=filtered[start:start + size], total=len(filtered), all_total=len(all_records),
+                       page=page, size=size, counts=dict(counts), synced_at=data.get("synced_at"),
+                       summary=summarize(records), years=years, editing_enabled=store is not None)
+
+    @app.route("/api/invoices/<ref>", methods=["GET", "PUT"])
+    @app.post("/api/invoices")
+    @protected
+    def edit_invoice(ref=None):
+        if request.method != "GET" and not secrets.compare_digest(
+                request.headers.get("X-CSRF-Token", ""), session.get("csrf", "")):
+            return jsonify(error="La sesión venció. Recargá el panel antes de guardar."), 400
+        if store is None:
+            return jsonify(error="La carga manual todavía no está disponible"), 503
+        if ref is not None and (len(ref) != 64 or any(char not in "0123456789abcdef" for char in ref)):
+            return jsonify(error="Factura no encontrada"), 404
+        try:
+            if request.method == "GET":
+                return jsonify(invoice=store.get(ref))
+            if not request.is_json:
+                return jsonify(error="Enviá los campos de la factura como datos válidos"), 415
+            result = store.save(request.get_json(silent=True), ref)
+            return jsonify(result), 201 if result["created"] else 200
+        except InvoiceError as exc:
+            return jsonify(error=str(exc), fields=exc.fields), exc.status
+        except Exception as exc:  # noqa: BLE001 - los detalles de Google pueden incluir credenciales
+            app.logger.warning("Falló la gestión de factura (%s)", type(exc).__name__)
+            return jsonify(error="No se pudo confirmar el guardado en Sheets. Tus datos siguen en el formulario; intentá nuevamente."), 503
 
     @app.get("/healthz")
     def health():

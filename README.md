@@ -81,25 +81,30 @@ fecha_carga,estado,fecha_factura,tipo,punto_venta,numero,proveedor,cuit_proveedo
 ## Panel privado de monitoreo en Oracle
 
 El panel consulta el historial de Sheets, la cola, la factura actual y su etapa,
-el resultado de cada archivo y métricas de CPU, memoria, disco y uptime. La API
-no importa PaddleOCR ni tiene las credenciales de Google. Un heartbeat cada5s
+el resultado de cada archivo y métricas de CPU, memoria, disco y uptime. También
+permite crear facturas ingresando sus datos y corregir los registros existentes.
+La API no importa PaddleOCR. Usa una copia privada de la cuenta de servicio,
+con alcance de Sheets únicamente, para guardar los cambios. Un heartbeat cada5s
 permite distinguir un worker activo de una copia de datos desactualizada.
 El historial se actualiza al terminar cada ciclo (espera por defecto60s).
 
 ```text
 monitoring.py                   # Estado y métricas publicados por el worker
 dashboard/
-  app.py, wsgi.py               # API de consulta y acceso con sesión
+  app.py, wsgi.py               # API de consulta/edición y acceso con sesión
+  invoices.py, sheets.py        # Importes, validación y escritura en Sheets
   templates/index.html         # Panel con tabla, filtros y detalle
   templates/login.html         # Acceso privado
   static/app.js, styles.css    # Interfaz responsive sin dependencias externas
-  requirements.txt, Dockerfile # Imagen liviana: Flask + Gunicorn
-  test_app.py                  # Autenticación, API y seguridad
+  requirements.txt, Dockerfile # Flask, Gunicorn y cliente de Sheets; sin OCR
+  test_app.py, test_invoices.py # Autenticación, cálculos, edición y seguridad
 compose.dashboard.yaml         # Panel, proxy HTTPS y volumen compartido
 deploy/Caddyfile                # HTTPS automático
 deploy/setup_dashboard.py       # Configuración privada y contraseña aleatoria
+deploy/setup_manual_dashboard.py # Secreto de Sheets restringido al usuario del panel
 tests/test_monitoring.py        # Persistencia, cola, heartbeat y recursos
 .local/dashboard_auth.json      # Hash de contraseña y clave de sesión (ignorado)
+.local/dashboard_service_account.json # Cuenta de servicio (ignorada)
 .local/PANEL_ACCESO.txt          # Datos de acceso (ignorado)
 ```
 
@@ -108,9 +113,10 @@ En la VM ya configurada, con `.local/compose.instance.yaml` de4GiB/1CPU:
 ```bash
 python3 deploy/setup_dashboard.py facturas.159.54.138.63.sslip.io
 sudo chown 10001:10001 .local/dashboard_auth.json
+sudo python3 deploy/setup_manual_dashboard.py
 sudo docker compose build worker dashboard
 sudo docker compose run --rm --no-deps -e MONITOR_DIR= worker python -m unittest discover -s tests
-sudo docker compose run --rm --no-deps dashboard python -m unittest dashboard.test_app
+sudo docker run --rm --network none --entrypoint python facturas-dashboard:local -m unittest discover -s dashboard -p 'test_*.py'
 sudo docker compose up -d --no-build
 ```
 
@@ -121,6 +127,27 @@ en127.0.0.1:8080 y en la red Docker; la web pública usa HTTPS y requiere login.
 El panel limita su RAM a192MiB y Caddy a128MiB; el OCR conserva su límite4GiB.
 El volumen `monitoring` persiste estados y eventos; está montado read-only en
 el panel. No se monta el Docker socket ni se permite ejecutar comandos.
+
+El resumen muestra el importe total, cantidad de facturas, neto, IVA y otros
+tributos del mes/año seleccionado, según la **fecha de emisión**. El periodo
+también filtra el historial. La suma usa todas las facturas de ese periodo,
+independientemente de la búsqueda, el filtro de resultados o la página visible;
+incluye las facturas para revisar e indica cuántas no tienen un total válido.
+
+Usar **Nueva factura** o **Carga manual** para ingresar los datos, y **Corregir**
+en una fila o en su detalle para editarla. El formulario contiene comprobante,
+proveedor/cliente y CUIT, concepto, importes, CAE y observaciones. Guarda solo
+datos en Sheets; no necesita adjuntar un PDF. Fecha, proveedor y total son
+obligatorios. Los datos fiscales incompletos o importes que no coinciden se
+guardan como REVISAR. **Calcular total** suma neto + IVA + otros tributos.
+Los cambios conservan el archivo de Drive y los identificadores originales.
+Se controlan facturas repetidas, reintentos del alta y versiones al corregir
+para evitar sobreescribir una edición anterior sin advertirlo. Las escrituras
+requieren sesión y token CSRF; los textos se guardan como valores, no fórmulas.
+
+Para actualizar únicamente el panel ya instalado, preparar su secreto,
+ejecutar `sudo docker compose build dashboard` y luego
+`sudo docker compose up -d --no-build --no-deps dashboard`.
 
 ```bash
 sudo docker compose logs -f --tail=100 worker dashboard web
@@ -142,7 +169,7 @@ retirarlo cuando funcione la dirección de sslip.io.
 [Limitaciones de Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
 
 Pruebas locales del panel: instalar `dashboard/requirements.txt` y ejecutar
-`python -m unittest dashboard.test_app`. El procesamiento mantiene sus pruebas
+`python -m unittest discover -s dashboard -p 'test_*.py'`. El procesamiento mantiene sus pruebas
 independientes en `tests/` sin necesitar Flask.
 
 Documentación: [Flask en producción](https://flask.palletsprojects.com/en/stable/deploying/gunicorn/),

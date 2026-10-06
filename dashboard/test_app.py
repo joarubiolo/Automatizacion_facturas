@@ -98,7 +98,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(response.headers["Cache-Control"], "no-store")
         self.assertEqual(response.headers["X-Frame-Options"], "DENY")
         self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
-        self.assertEqual(self.client.post("/login", data={"password": "x" * 9000}).status_code, 413)
+        self.assertEqual(self.client.post("/login", data={"password": "x" * 40000}).status_code, 413)
 
     def test_snapshot_atomic_replacement_cache_and_invalid_files(self):
         reader = Snapshots(self.root)

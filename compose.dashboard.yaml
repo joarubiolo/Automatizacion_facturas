@@ -13,8 +13,12 @@ services:
     environment:
       MONITOR_DIR: /monitor
       DASHBOARD_AUTH_FILE: /run/secrets/dashboard_auth
+      DASHBOARD_GOOGLE_FILE: /run/secrets/dashboard_google
+      SPREADSHEET_ID: ${SPREADSHEET_ID}
+      WORKSHEET_NAME: ${WORKSHEET_NAME:-FACTURAS}
     secrets:
       - dashboard_auth
+      - dashboard_google
     volumes:
       - monitoring:/monitor:ro
     # Solo accesible localmente y por el proxy; no publicar la API en Internet.
@@ -60,3 +64,5 @@ volumes:
 secrets:
   dashboard_auth:
     file: ./.local/dashboard_auth.json
+  dashboard_google:
+    file: ./.local/dashboard_service_account.json
